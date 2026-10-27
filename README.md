@@ -104,8 +104,9 @@ services/
   status-dashboard/       # Static service-status dashboard (port 8003)
   foundry-iq-docs/        # Markdown source for the FoundryIQ knowledge base
 ui/                       # React + TypeScript + Tailwind frontend
-infra/                    # Bicep modules for Container Apps + AI Search + blob
-scripts/                  # setup.sh, start-dev.sh, setup-knowledge-base.sh
+foundation/               # Foundry infra (Bicep), toolbox definition, KB setup (azd project 1)
+agent/                    # Hosted agent deployment (azd project 2)
+scripts/                  # setup.sh, start-dev.sh
 docs/                     # Architecture, deployment, local-dev, integration docs
 ```
 

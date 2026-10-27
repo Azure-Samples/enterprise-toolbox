@@ -1,5 +1,64 @@
 # Deployment
 
+## Two lifecycles: foundation, then agent
+
+Deployment is split into two independent azd projects. Each will be driven by its
+own GitHub workflow (workflows are not written yet).
+
+| Stage | Folder | Owns | Deploy with |
+|-------|--------|------|-------------|
+| 1. Foundation | [`foundation/`](../foundation) | Foundry account, project, model, ACR, App Insights, AI Search, Storage, knowledge base + connection, and the **Foundry Toolbox** | `azd provision`, then `azd deploy fibey-toolbox` |
+| 2. Agent | [`agent/`](../agent) | The hosted `fibey-agent` only | `azd deploy fibey-agent` |
+
+The foundation can exist without an agent. The toolbox is versioned
+independently of the agent: a toolbox deployment does not redeploy the agent,
+and agent deployments never touch the toolbox. Successful toolbox deployments
+promote the new default, so the agent immediately uses the new tools through its
+unversioned toolbox endpoint.
+
+```bash
+# Stage 1: foundation (from foundation/)
+cd foundation
+azd env new <env-name>          # then set AZURE_LOCATION, AZURE_SUBSCRIPTION_ID
+azd provision                   # Foundry infra + knowledge base (postprovision hook)
+azd env set INVENTORY_MCP_URL https://<inventory-fqdn>/mcp
+azd env set WORK_ORDERS_API_URL https://<work-orders-fqdn>
+azd deploy fibey-toolbox        # creates and promotes a toolbox version
+
+# Stage 2: agent (from agent/)
+cd ../agent
+./scripts/sync-foundation-env.sh <env-name>   # copy project endpoint, ACR, model, TOOLBOX_MCP_URL
+azd deploy fibey-agent --environment <env-name>
+```
+
+Use the same environment name in both projects. In CI, supply the values listed in
+`agent/scripts/sync-foundation-env.sh` as variables instead of syncing.
+
+The toolbox definition, including its OpenAPI schema, lives inline in
+[`foundation/azure.yaml`](../foundation/azure.yaml). Its inventory and
+work-orders endpoints are inputs, because those apps are no longer deployed by
+either flow. Each successful `azd deploy fibey-toolbox` creates a new immutable
+toolbox version and promotes that version to the default. The agent uses the
+unversioned toolbox endpoint, so this immediately changes its available tools
+without redeploying the agent. To inspect versions or roll back, run:
+
+```bash
+azd ai toolbox versions list fibey-toolbox
+azd ai toolbox publish fibey-toolbox <previous-version>
+```
+
+Promotion is handled by the toolbox service's azd deploy hooks. If the deploy
+creates a version but promotion fails, the deploy command reports failure and
+the previous default remains active unless the publish operation itself succeeded.
+The Container Apps Bicep modules are parked in [`services/infra/`](../services/infra)
+and are not wired into either deployment.
+
+## Legacy all-in-one deployment reference
+
+The remaining sections describe the original all-in-one deployment and are
+retained for the Container Apps services. The current Foundry foundation and
+hosted-agent deployments are described above.
+
 ## Overview
 
 Fibey Field Ops supports multiple deployment modes:
@@ -22,9 +81,9 @@ The deployment creates all resources in a single resource group (`rg-<env-name>`
 | Work Orders API | Container App | `services/work-orders-api/` | Work order CRUD backend |
 | Inventory MCP | Container App | `services/inventory-mcp/` | Inventory MCP server |
 | Status Dashboard | Container App | `services/status-dashboard/` | Network/service status page |
-| AI Foundry account + project | Microsoft Foundry | `infra/core/ai/` | Hosts the model deployment, hosted agent, and toolbox |
+| AI Foundry account + project | Microsoft Foundry | `foundation/infra/core/ai/` | Hosts the model deployment, hosted agent, and toolbox |
 | Model deployment | Foundry | `azure.yaml` | `gpt-4.1-mini` (configurable) |
-| Foundry Toolbox | Foundry (postprovision) | `scripts/setup-toolbox.sh` | Single MCP endpoint dispatching to backend tools |
+| Foundry Toolbox | Foundry (azd service) | `foundation/azure.yaml` | Single MCP endpoint dispatching to backend tools |
 | AI Search | Azure AI Search | `services/foundry-iq-docs/` | Knowledge base index + KB MCP endpoint |
 | Container Registry | ACR | — | Docker image storage (apps + hosted agent) |
 | Storage Account | Blob Storage | `services/foundry-iq-docs/` | Document storage |
@@ -53,11 +112,10 @@ the storage endpoint. If subscription policy enforces private-only Storage
 access, this demo requires additional private networking for both clients before
 knowledge-base ingestion can complete. Do not disable the policy to run the
 hook. Anonymous blob access and shared-key authentication remain disabled.
-For an explicitly limited deployment without knowledge retrieval, set
-`ENABLE_KNOWLEDGE_BASE_TOOL=0` in the azd environment and run
-`FORCE_TOOLBOX_UPDATE=1 ./scripts/setup-toolbox.sh`. The hook prints a warning
-and publishes only the inventory and work-order tools. After ingestion is
-available, set the value back to `1` and republish the toolbox.
+For a limited deployment without knowledge retrieval, remove the
+`knowledge_base` MCP tool from the `fibey-toolbox` service in
+`foundation/azure.yaml`, then run `azd deploy fibey-toolbox` from `foundation/`.
+Restore the tool and deploy again after knowledge-base ingestion is available.
 
 ## Quick Deployment
 
@@ -79,13 +137,14 @@ azd up
 1. **Provision** — creates the resource group, AI Foundry account + project,
    model deployment, AI Search, storage, ACR, Container Apps environment, all
    six container apps, the Foundry knowledge-base connection, and all RBAC
-   assignments (Bicep in `infra/`).
+   assignments (Bicep in `foundation/infra/`).
 2. **Postprovision hook** — uploads FoundryIQ docs, builds the search index,
-   and creates the knowledge source/base (`scripts/setup-knowledge-base.sh`).
+   and creates the knowledge source/base (`foundation/scripts/setup-knowledge-base.sh`).
 3. **Deploy** — builds and pushes container images for all apps and deploys
    the hosted agent to the Foundry project.
-4. **Postdeploy hook** — creates the Foundry Toolbox with tool search enabled
-   (`scripts/setup-toolbox.sh`).
+4. **Toolbox deployment (separate command)** — run `azd deploy fibey-toolbox`
+   from `foundation/` after the knowledge-base connection and backing service
+   endpoints are available.
 
 **Important:** Do NOT include `?api-version=v1` in the `TOOLBOX_MCP_URL`. The agent code automatically appends this.
 
@@ -120,7 +179,7 @@ services/foundry-iq-docs/docs/
 ```
 
 This pipeline is configured **automatically** by the azd postprovision hook
-(`scripts/postprovision.sh` → `scripts/setup-knowledge-base.sh`):
+(`foundation/scripts/setup-knowledge-base.sh`):
 
 1. **Documents uploaded to blob storage** from `services/foundry-iq-docs/docs/`.
 2. **Search index and indexer created** — blob data source, `foundry-iq-docs-index`,
@@ -166,7 +225,7 @@ The knowledge base retrieval was validated with semantic `intents` requests agai
 - All Container Apps are configured with **minReplicas: 1** to avoid cold starts.
 - The FoundryIQ documents are uploaded to blob storage and indexed separately — they are not part of the container deployment.
 - The status dashboard can be set to internal-only ingress if browser automation is the only consumer.
-- Infrastructure definitions live in `infra/` (Bicep). The Foundry Toolbox is created automatically by the postprovision hook (`scripts/setup-toolbox.sh`).
+- Infrastructure definitions live in `foundation/infra/` (Bicep). Deploy the Foundry Toolbox separately with `azd deploy fibey-toolbox` from `foundation/`.
 
 ## RBAC (automated)
 
@@ -225,7 +284,7 @@ azd deploy fibey-agent
 |----------|--------|-------------|
 | `FOUNDRY_PROJECT_ENDPOINT` | Auto-injected | Foundry project endpoint URL |
 | `FOUNDRY_MODEL` | Auto-injected | Model deployment name (from `azure.yaml`) |
-| `TOOLBOX_MCP_URL` | `agent.yaml` (`${TOOLBOX_MCP_URL}` from the azd env, set by `azd provision`) | Toolbox MCP endpoint URL |
+| `TOOLBOX_MCP_URL` | `agent/azure.yaml` (copied from foundation outputs) | Toolbox MCP endpoint URL |
 
 > **Note:** All `FOUNDRY_*` and `AGENT_*` env vars are reserved by the platform.
 > Do not set them in `agent.yaml` — they are auto-injected from the deployment config.
@@ -243,8 +302,8 @@ azd deploy fibey-agent
 ### Foundry Toolbox
 
 The Toolbox lives in the same Foundry project and provides a single MCP
-endpoint that dispatches to the backend tools. It is created automatically by
-the postdeploy hook (`scripts/setup-toolbox.sh`):
+endpoint that dispatches to the backend tools. Deploy it explicitly from
+`foundation/` with `azd deploy fibey-toolbox`:
 
 | Tool | Type | Backend |
 |------|------|---------|
@@ -258,12 +317,11 @@ only `tool_search` and `call_tool`, and the agent discovers backend tools on
 demand by searching their descriptions. This keeps the model's tool list small
 as more tools are added.
 
-The hook skips creation if the toolbox already exists. To publish a new
-version (e.g., after Container App FQDNs change) — the script automatically
-promotes the new version to default:
+Each deployment creates and automatically promotes a new toolbox version.
+Inspect available versions and the active default with:
 
 ```bash
-FORCE_TOOLBOX_UPDATE=1 ./scripts/setup-toolbox.sh
+azd ai toolbox versions list fibey-toolbox
 ```
 
 ## Gateway Modes

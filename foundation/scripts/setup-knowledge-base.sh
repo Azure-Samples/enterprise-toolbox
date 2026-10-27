@@ -3,12 +3,12 @@
 # data source → index → indexer → knowledge source → knowledge base.
 #
 # The Foundry project connection (kb-<kb-name>) and Search RBAC assignments are
-# created by the Bicep templates in infra/. Runs as part of the azd
+# created by the Bicep templates in foundation/infra/. Runs as part of the azd
 # postprovision hook; safe to re-run (all operations are idempotent PUTs).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOCS_DIR="$REPO_ROOT/services/foundry-iq-docs/docs"
 
 CONTAINER_NAME="foundry-iq-docs"

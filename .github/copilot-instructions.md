@@ -26,7 +26,8 @@ services/inventory-mcp/     # MCP inventory service
 services/work-orders-api/   # FastAPI work order service
 services/status-dashboard/  # Static HTML status dashboard
 services/foundry-iq-docs/   # Markdown knowledge base content for FoundryIQ
-infra/                      # Azure infrastructure definitions
+foundation/                 # azd project 1: Foundry infra (Bicep), toolbox, KB setup
+agent/                      # azd project 2: hosted agent deployment only
 scripts/                    # Setup and dev helpers
 ```
 

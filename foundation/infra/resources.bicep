@@ -64,27 +64,6 @@ param toolboxName string
 @description('Name of the AI Search knowledge base.')
 param knowledgeBaseName string
 
-@description('Name of the AI Search index for FoundryIQ documents.')
-param searchIndexName string
-
-@description('Container image for the ui service.')
-param uiImageName string
-
-@description('Container image for the gateway service.')
-param gatewayImageName string
-
-@description('Container image for the agent-service service.')
-param agentServiceImageName string
-
-@description('Container image for the inventory-mcp service.')
-param inventoryMcpImageName string
-
-@description('Container image for the work-orders-api service.')
-param workOrdersApiImageName string
-
-@description('Container image for the status-dashboard service.')
-param statusDashboardImageName string
-
 var aiProjectDeployments = json(aiProjectDeploymentsJson)
 var aiProjectConnections = json(aiProjectConnectionsJson)
 var aiProjectConnectionCreds = json(aiProjectConnectionCredentialsJson)
@@ -115,18 +94,11 @@ var effectiveDeployments = empty(aiProjectDeployments) ? [
 var resourceToken = toLower(uniqueString(subscription().subscriptionId, resourceGroup().id, environmentName))
 var sanitizedEnvironmentName = replace(toLower(environmentName), '-', '')
 
-var containerAppsEnvironmentName = '${environmentName}-cae'
 var logAnalyticsWorkspaceName = '${environmentName}-logs'
 var registryName = 'acr${take(sanitizedEnvironmentName, 15)}${take(resourceToken, 8)}'
 var storageAccountName = 'st${take(sanitizedEnvironmentName, 10)}${take(resourceToken, 12)}'
 var searchServiceName = '${environmentName}-search'
 
-var uiAppName = '${environmentName}-ui'
-var gatewayAppName = '${environmentName}-gateway'
-var agentServiceAppName = '${environmentName}-agent-service'
-var inventoryMcpAppName = '${environmentName}-inventory-mcp'
-var workOrdersApiAppName = '${environmentName}-work-orders-api'
-var statusDashboardAppName = '${environmentName}-status-dashboard'
 
 var searchEndpoint = 'https://${searchServiceName}.search.windows.net'
 var knowledgeBaseMcpEndpoint = '${searchEndpoint}/knowledgebases/${knowledgeBaseName}/mcp?api-version=2026-05-01-preview'
@@ -276,208 +248,6 @@ resource accountSearchReaderRole 'Microsoft.Authorization/roleAssignments@2022-0
   }
 }
 
-// ─── Container Apps ───
-
-module containerAppsEnvironment 'modules/container-apps-environment.bicep' = {
-  name: 'container-apps-environment'
-  params: {
-    name: containerAppsEnvironmentName
-    location: location
-    logAnalyticsWorkspaceCustomerId: logAnalytics.outputs.customerId
-    logAnalyticsWorkspaceSharedKey: logAnalytics.outputs.sharedKey
-    tags: tags
-  }
-}
-
-module inventoryMcp 'modules/container-app.bicep' = {
-  name: 'inventory-mcp-app'
-  params: {
-    name: inventoryMcpAppName
-    serviceName: 'inventory-mcp'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: inventoryMcpImageName
-    targetPort: 8001
-    env: []
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module workOrdersApi 'modules/container-app.bicep' = {
-  name: 'work-orders-api-app'
-  params: {
-    name: workOrdersApiAppName
-    serviceName: 'work-orders-api'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: workOrdersApiImageName
-    targetPort: 8002
-    env: []
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module statusDashboard 'modules/container-app.bicep' = {
-  name: 'status-dashboard-app'
-  params: {
-    name: statusDashboardAppName
-    serviceName: 'status-dashboard'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: statusDashboardImageName
-    targetPort: 8003
-    env: []
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module agentService 'modules/container-app.bicep' = {
-  name: 'agent-service-app'
-  params: {
-    name: agentServiceAppName
-    serviceName: 'agent-service'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: agentServiceImageName
-    targetPort: 8000
-    enableSystemIdentity: true
-    env: [
-      {
-        name: 'FOUNDRY_PROJECT_ENDPOINT'
-        value: foundryProjectEndpoint
-      }
-      {
-        name: 'FOUNDRY_MODEL'
-        value: foundryModel
-      }
-      {
-        name: 'TOOLBOX_MCP_URL'
-        value: toolboxMcpUrl
-      }
-      {
-        name: 'AZURE_SEARCH_ENDPOINT'
-        value: searchEndpoint
-      }
-      {
-        name: 'AZURE_SEARCH_INDEX'
-        value: searchIndexName
-      }
-    ]
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module gateway 'modules/container-app.bicep' = {
-  name: 'gateway-app'
-  params: {
-    name: gatewayAppName
-    serviceName: 'gateway'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: gatewayImageName
-    targetPort: 8000
-    enableSystemIdentity: true
-    env: [
-      {
-        name: 'AGENT_MODE'
-        value: 'containerapp'
-      }
-      {
-        name: 'CONTAINERAPP_AGENT_URL'
-        value: 'https://${agentService.outputs.fqdn}'
-      }
-      {
-        name: 'HOSTED_AGENT_ENDPOINT'
-        value: foundryProjectEndpoint
-      }
-      {
-        name: 'HOSTED_AGENT_NAME'
-        value: 'fibey-agent'
-      }
-      {
-        name: 'FOUNDRY_PROJECT_ENDPOINT'
-        value: foundryProjectEndpoint
-      }
-      {
-        name: 'FOUNDRY_MODEL'
-        value: foundryModel
-      }
-      {
-        name: 'TOOLBOX_MCP_URL'
-        value: toolboxMcpUrl
-      }
-      {
-        name: 'INVENTORY_MCP_URL'
-        value: 'https://${inventoryMcp.outputs.fqdn}'
-      }
-      {
-        name: 'WORK_ORDERS_API_URL'
-        value: 'https://${workOrdersApi.outputs.fqdn}'
-      }
-      {
-        name: 'STATUS_DASHBOARD_URL'
-        value: 'https://${statusDashboard.outputs.fqdn}'
-      }
-    ]
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module ui 'modules/container-app.bicep' = {
-  name: 'ui-app'
-  params: {
-    name: uiAppName
-    serviceName: 'ui'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: uiImageName
-    targetPort: 80
-    env: [
-      {
-        name: 'VITE_API_URL'
-        value: '/api'
-      }
-      {
-        // nginx proxies /api/ to the gateway (see ui/nginx.conf)
-        name: 'GATEWAY_URL'
-        value: 'https://${gateway.outputs.fqdn}/api/'
-      }
-      {
-        name: 'GATEWAY_HOST'
-        value: gateway.outputs.fqdn
-      }
-    ]
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-// Agent-service and gateway identities call the Foundry project and models
-module agentServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
-  name: 'agent-service-ai-roles'
-  params: {
-    aiAccountName: aiProject.outputs.aiServicesAccountName
-    principalId: agentService.outputs.principalId
-  }
-}
-
 // The search service managed identity calls the Azure OpenAI deployment for
 // knowledge base query planning and answer synthesis.
 module searchServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
@@ -485,14 +255,6 @@ module searchServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
   params: {
     aiAccountName: aiProject.outputs.aiServicesAccountName
     principalId: aiSearch.outputs.principalId
-  }
-}
-
-module gatewayAiRoles 'modules/ai-account-role-assignments.bicep' = {
-  name: 'gateway-ai-roles'
-  params: {
-    aiAccountName: aiProject.outputs.aiServicesAccountName
-    principalId: gateway.outputs.principalId
   }
 }
 
@@ -508,13 +270,9 @@ output applicationInsightsConnectionString string = aiProject.outputs.APPLICATIO
 output applicationInsightsResourceId string = aiProject.outputs.APPLICATIONINSIGHTS_RESOURCE_ID
 output acrConnectionName string = aiProject.outputs.dependentResources.registry.connectionName
 output toolboxMcpUrl string = toolboxMcpUrl
+output knowledgeBaseMcpEndpoint string = knowledgeBaseMcpEndpoint
+output knowledgeBaseConnectionName string = kbConnectionName
 output searchServiceName string = aiSearch.outputs.name
 output searchServiceEndpoint string = aiSearch.outputs.endpoint
 output storageAccountName string = storageAccount.outputs.name
 output registryLoginServer string = containerRegistry.outputs.loginServer
-output uiFqdn string = ui.outputs.fqdn
-output gatewayFqdn string = gateway.outputs.fqdn
-output agentServiceFqdn string = agentService.outputs.fqdn
-output inventoryMcpFqdn string = inventoryMcp.outputs.fqdn
-output workOrdersApiFqdn string = workOrdersApi.outputs.fqdn
-output statusDashboardFqdn string = statusDashboard.outputs.fqdn

@@ -72,24 +72,6 @@ param knowledgeBaseName string = 'fibey-field-ops-kb'
 @description('Name of the AI Search index for FoundryIQ documents.')
 param searchIndexName string = 'foundry-iq-docs-index'
 
-@description('Container image for the ui service.')
-param uiImageName string = ''
-
-@description('Container image for the gateway service.')
-param gatewayImageName string = ''
-
-@description('Container image for the agent-service service.')
-param agentServiceImageName string = ''
-
-@description('Container image for the inventory-mcp service.')
-param inventoryMcpImageName string = ''
-
-@description('Container image for the work-orders-api service.')
-param workOrdersApiImageName string = ''
-
-@description('Container image for the status-dashboard service.')
-param statusDashboardImageName string = ''
-
 var tags = {
   'azd-env-name': environmentName
 }
@@ -129,13 +111,6 @@ module resources 'resources.bicep' = {
     foundryModelCapacity: foundryModelCapacity
     toolboxName: toolboxName
     knowledgeBaseName: knowledgeBaseName
-    searchIndexName: searchIndexName
-    uiImageName: uiImageName
-    gatewayImageName: gatewayImageName
-    agentServiceImageName: agentServiceImageName
-    inventoryMcpImageName: inventoryMcpImageName
-    workOrdersApiImageName: workOrdersApiImageName
-    statusDashboardImageName: statusDashboardImageName
   }
 }
 
@@ -160,6 +135,8 @@ output FOUNDRY_MODEL string = foundryModel
 output TOOLBOX_NAME string = toolboxName
 output TOOLBOX_MCP_URL string = resources.outputs.toolboxMcpUrl
 output KB_NAME string = knowledgeBaseName
+output KB_MCP_URL string = resources.outputs.knowledgeBaseMcpEndpoint
+output KB_CONNECTION_NAME string = resources.outputs.knowledgeBaseConnectionName
 
 // Knowledge base resources
 output AZURE_SEARCH_ENDPOINT string = resources.outputs.searchServiceEndpoint
@@ -168,11 +145,4 @@ output searchServiceName string = resources.outputs.searchServiceName
 output searchServiceEndpoint string = resources.outputs.searchServiceEndpoint
 output storageAccountName string = resources.outputs.storageAccountName
 
-// Service endpoints
-output uiFqdn string = resources.outputs.uiFqdn
-output gatewayFqdn string = resources.outputs.gatewayFqdn
-output agentServiceFqdn string = resources.outputs.agentServiceFqdn
-output inventoryMcpFqdn string = resources.outputs.inventoryMcpFqdn
-output workOrdersApiFqdn string = resources.outputs.workOrdersApiFqdn
-output statusDashboardFqdn string = resources.outputs.statusDashboardFqdn
 output registryLoginServer string = resources.outputs.registryLoginServer
