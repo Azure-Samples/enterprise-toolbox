@@ -1,0 +1,47 @@
+name: Set up Azure deployment
+description: Authenticate with OIDC and install pinned azd tooling for one deployment lifecycle
+inputs:
+  client-id:
+    description: Azure deployment identity client ID
+    required: true
+  tenant-id:
+    description: Azure tenant ID
+    required: true
+  subscription-id:
+    description: Azure subscription ID
+    required: true
+  azd-version:
+    description: Azure Developer CLI version
+    required: false
+    default: 1.37.1
+  extension-name:
+    description: Foundry azd extension for this workflow lifecycle
+    required: true
+  extension-version:
+    description: Pinned version of the selected Foundry azd extension
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Sign in to Azure with OIDC
+      uses: Azure/login@93381592711f247e165c389ebb30b596c84cdc48 # v3.0.0
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        subscription-id: ${{ inputs.subscription-id }}
+    - name: Install Azure Developer CLI
+      uses: Azure/setup-azd@0b7e3a35ab00f2eee7080c845eb39c3f0ebfa553 # v2.4.0
+      with:
+        version: ${{ inputs.azd-version }}
+    - name: Install the selected Foundry extension
+      shell: bash
+      env:
+        EXTENSION_NAME: ${{ inputs.extension-name }}
+        EXTENSION_VERSION: ${{ inputs.extension-version }}
+      run: |
+        set -euo pipefail
+        azd extension install "$EXTENSION_NAME" \
+          --version "$EXTENSION_VERSION" --no-prompt
+    - name: Use Azure CLI authentication for azd
+      shell: bash
+      run: azd config set auth.useAzCliAuth true

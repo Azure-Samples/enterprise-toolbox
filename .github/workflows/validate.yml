@@ -1,0 +1,89 @@
+name: Validate foundation and hosted agent
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate deployment changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.12"
+      - name: Select relevant validation groups
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" \
+            > "$RUNNER_TEMP/changed-files.bin"
+          python3 tests/deployment/select_changed_paths.py \
+            --file "$RUNNER_TEMP/changed-files.bin" >> "$GITHUB_OUTPUT"
+      - name: Install pinned YAML validator
+        if: steps.changes.outputs.configuration == 'true'
+        run: python -m pip install --disable-pip-version-check PyYAML==6.0.3
+      - name: Validate YAML, duplicate keys, and embedded Bash
+        if: steps.changes.outputs.configuration == 'true'
+        run: python tests/deployment/validate_yaml.py
+      - name: Lint GitHub Actions workflows
+        if: steps.changes.outputs.workflows == 'true'
+        uses: reviewdog/action-actionlint@60d242fc44b053771e0f314a856aa63024e832fd # v1.80.8
+        with:
+          reporter: local
+          fail_level: error
+      - name: Check deployment shell scripts
+        if: steps.changes.outputs.workflows == 'true'
+        uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
+        with:
+          reporter: local
+          fail_level: error
+          path: .github/scripts
+      - name: Check foundation shell scripts
+        if: steps.changes.outputs.foundation == 'true'
+        uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
+        with:
+          reporter: local
+          fail_level: error
+          path: foundation/scripts
+      - name: Run offline deployment tests
+        if: steps.changes.outputs.configuration == 'true'
+        run: python3 -m unittest discover -s tests/deployment -v
+      - name: Compile foundation Bicep
+        if: steps.changes.outputs.foundation == 'true'
+        run: |
+          set -euo pipefail
+          az bicep install --version v0.48.1
+          az bicep build --file foundation/infra/main.bicep --stdout > /dev/null
+      - name: Check agent dependency lock and Python syntax
+        if: steps.changes.outputs.agent == 'true'
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check uv==0.12.0
+          uv lock --check
+          python3 -m compileall -q src/fibey
+      - name: Build agent image without pushing
+        if: steps.changes.outputs.agent == 'true'
+        run: docker build --pull --file Dockerfile.agent --tag fibey-agent-ci-check .
+      - name: Verify agent modules import without starting the server
+        if: steps.changes.outputs.agent == 'true'
+        run: >-
+          docker run --rm --entrypoint python fibey-agent-ci-check
+          -c "import fibey.agent.hosted; print('Hosted-agent module import succeeded')"

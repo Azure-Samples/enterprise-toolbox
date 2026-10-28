@@ -1,0 +1,19 @@
+# Foundry-hosted agent image: built remotely (remoteBuild) for the
+# `fibey-agent` service in azure.yaml. Installs deps from uv.lock
+# and runs the hosted agent entrypoint (src/fibey/agent/hosted.py).
+FROM mirror.gcr.io/library/python:3.12-slim
+
+ARG UV_VERSION=0.12.0
+
+WORKDIR /app
+
+COPY . user_agent/
+WORKDIR /app/user_agent
+
+RUN pip install --no-cache-dir "uv==${UV_VERSION}" && uv sync --frozen --no-dev
+
+ENV PATH="/app/user_agent/.venv/bin:$PATH"
+
+EXPOSE 8088
+
+CMD ["python", "src/fibey/agent/hosted.py"]
