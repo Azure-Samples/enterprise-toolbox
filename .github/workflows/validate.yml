@@ -48,6 +48,7 @@ jobs:
         uses: reviewdog/action-actionlint@60d242fc44b053771e0f314a856aa63024e832fd # v1.80.8
         with:
           reporter: local
+          filter_mode: nofilter
           fail_level: error
       - name: Check deployment shell scripts
         if: steps.changes.outputs.workflows == 'true'
