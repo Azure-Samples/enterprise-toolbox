@@ -35,8 +35,9 @@ or an agent dependency-lock, image-build, and importability check. Agent image
 validation builds locally on the GitHub runner and does not push an image.
 
 Foundation preview and agent preflight are read-only. Foundation provisioning
-updates existing resources, so enable required reviewers on the
-`fibey-foundation` GitHub Environment to approve each run; it
+updates existing resources, so protect `main` and review workflow changes
+before merging; the deployment jobs use branch-scoped Azure credentials and
+do not have a GitHub Environment approval gate. Foundation provisioning
 preserves the Search region in `centralus` while Foundry is in `eastus2`.
 Toolbox promotion does not trigger an agent deployment. The hosted-agent
 workflow never provisions foundation resources or deploys the toolbox.
@@ -50,10 +51,9 @@ the workflow checks the hosted-agent status and issues a new-session,
 read-only inventory smoke prompt for `FIB-002`; it explicitly does not request
 work-order creation or updates.
 
-The foundation workflow uses the protected GitHub Environment
-`fibey-foundation`; the hosted-agent workflow uses `fibey-agent`. Each creates
-its own ephemeral azd environment named `fibey-jf-1026` from its environment
-variables and a successful ARM deployment. The deployment name is optional:
+The workflows do not bind jobs to GitHub Environments. Each creates its own
+ephemeral azd environment named `fibey-jf-1026` from repository variables and a
+successful ARM deployment. The deployment name is optional:
 when omitted, the context loader discovers the newest successful deployment
 matching the configured subscription, tenant, resource group, Foundry account,
 and project. If multiple matches have the same timestamp, the workflow asks
@@ -76,14 +76,15 @@ actions pass inputs as environment variables and call them with
 validation; focused offline tests cover toolbox promotion and sensitive-output
 handling.
 
-Configure these GitHub Environment secrets in both environments:
+Configure these GitHub repository secrets:
 
-- `AZURE_CLIENT_ID` — the client ID for that environment's separately scoped
-  deployment identity.
+- `AZURE_FOUNDATION_CLIENT_ID` — client ID for the foundation deployment
+  identity.
+- `AZURE_AGENT_CLIENT_ID` — client ID for the hosted-agent deployment identity.
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 
-Configure these GitHub Environment variables in both environments:
+Configure these GitHub repository variables:
 
 - `AZURE_RESOURCE_GROUP=rg-fibey-jf-1026`
 - `AZURE_AI_ACCOUNT_NAME=ai-account-sidzt6mr5x5qu`
@@ -93,7 +94,7 @@ Configure these GitHub Environment variables in both environments:
 - `FOUNDRY_MODEL_VERSION=2025-04-14`
 - `FOUNDRY_MODEL_CAPACITY=100`
 
-The foundation environment additionally needs `INVENTORY_MCP_URL`,
+The foundation workflow additionally needs `INVENTORY_MCP_URL`,
 `WORK_ORDERS_API_URL`, and `AZURE_PRINCIPAL_ID`. The principal ID is the
 foundation deployment identity's **object ID**, not its client ID;
 `AZURE_PRINCIPAL_TYPE` is optional and defaults to `ServicePrincipal`.
@@ -105,21 +106,19 @@ matching deployment must already exist; an empty subscription needs a separate
 bootstrap path. The resolver validates the selected deployment's subscription,
 resource group, account, and project before initializing azd state.
 
-Configure one environment-subject federated credential for each deployment
-identity:
+Configure a branch-subject federated credential for each deployment identity.
+For workflows running from `Azure-Samples/enterprise-toolbox` on `main`, both
+credentials use this subject:
 
-| GitHub Environment | OIDC subject |
-|---|---|
-| `fibey-foundation` | `repo:JFolberth/fibey:environment:fibey-foundation` |
-| `fibey-agent` | `repo:JFolberth/fibey:environment:fibey-agent` |
+`repo:Azure-Samples/enterprise-toolbox:ref:refs/heads/main`
 
 Use issuer `https://token.actions.githubusercontent.com` and audience
-`api://AzureADTokenExchange`. Protect both environments with required
-approvals and deployment-branch restrictions. The workflows do not create or
-configure deployment identities or federated credentials. Resource role
-assignments declared by foundation Bicep or the hosted-agent extension may
-still be applied to workload identities; the workflows do not grant additional
-permissions to their own identities.
+`api://AzureADTokenExchange`. If running the workflows from a different
+repository, use its owner and repository name in the subject. The workflows do
+not create or configure deployment identities or federated credentials.
+Resource role assignments declared by foundation Bicep or the hosted-agent
+extension may still be applied to workload identities; the workflows do not
+grant additional permissions to their own identities.
 
 The workflows share a non-cancelling GitHub concurrency group so their
 mutations do not overlap with each other. This does not serialize deployments
@@ -173,7 +172,7 @@ azd deploy fibey-agent --environment <env-name>
 
 Use the same environment name in both projects. The sync script is for local
 development only. In CI, each workflow bootstraps an ephemeral azd environment
-from its GitHub Environment variables and the selected successful foundation
+from repository variables and the selected successful foundation
 deployment; see the workflow files for their exact variable contracts.
 
 The toolbox definition, including its OpenAPI schema, lives inline in
