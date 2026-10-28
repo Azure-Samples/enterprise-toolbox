@@ -1,0 +1,30 @@
+name: Initialize deployment from parameters
+description: Create a fresh azd environment without requiring existing application resources
+inputs:
+  project-directory:
+    description: Directory containing the azd project
+    required: true
+  parameter-file:
+    description: Checked-in non-secret deployment parameter file
+    required: true
+  operation:
+    description: Lifecycle mode used for minimal operation-specific parameter checks
+    required: true
+  subscription-id:
+    description: Authenticated Azure subscription ID
+    required: true
+  tenant-id:
+    description: Authenticated Azure tenant ID
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Initialize desired deployment settings
+      shell: bash
+      env:
+        PROJECT_DIRECTORY: ${{ inputs.project-directory }}
+        PARAMETER_FILE: ${{ inputs.parameter-file }}
+        OPERATION: ${{ inputs.operation }}
+        AZURE_SUBSCRIPTION_ID: ${{ inputs.subscription-id }}
+        AZURE_TENANT_ID: ${{ inputs.tenant-id }}
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/initialize-deployment.sh"

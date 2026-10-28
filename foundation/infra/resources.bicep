@@ -55,6 +55,9 @@ param enableMonitoring bool
 @description('Model deployment name used by the agent and gateway.')
 param foundryModel string
 
+@description('Version of the Foundry model to deploy.')
+param foundryModelVersion string
+
 @description('Capacity (TPM, in thousands) for the Foundry model deployment.')
 param foundryModelCapacity int
 
@@ -71,16 +74,15 @@ var aiProjectDependentResources = json(aiProjectDependentResourcesJson)
 
 // When the azd AI agent extension hasn't requested any model deployments
 // (e.g. plain `azd provision`), fall back to deploying the default model.
-// When the extension does supply deployments, override the capacity of the
-// primary model so `azd up` doesn't reset a manually tuned TPM back to the
-// extension default.
+// When the extension supplies deployments, preserve the configured version and
+// capacity of the primary model instead of accepting the extension defaults.
 var effectiveDeployments = empty(aiProjectDeployments) ? [
   {
     name: foundryModel
     model: {
       name: foundryModel
       format: 'OpenAI'
-      version: '2025-04-14'
+      version: foundryModelVersion
     }
     sku: {
       name: 'GlobalStandard'
@@ -88,6 +90,7 @@ var effectiveDeployments = empty(aiProjectDeployments) ? [
     }
   }
 ] : map(aiProjectDeployments, d => d.name == foundryModel ? union(d, {
+  model: union(d.model, { version: foundryModelVersion })
   sku: union(d.sku, { capacity: foundryModelCapacity })
 }) : d)
 

@@ -29,6 +29,9 @@ def version_list(*versions: tuple[str, str], default: str | None = None) -> str:
     return json.dumps(payload)
 
 
+EXISTING_TOOLBOX = json.dumps({"toolboxes": [{"name": "fibey-toolbox"}]})
+
+
 class ToolboxVersionLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
@@ -46,6 +49,7 @@ class ToolboxVersionLifecycleTests(unittest.TestCase):
             lifecycle,
             "_run_azd",
             side_effect=[
+                EXISTING_TOOLBOX,
                 initial,
                 version_list(("id-1", "1"), ("id-2", "2")),
                 "",
@@ -73,6 +77,7 @@ class ToolboxVersionLifecycleTests(unittest.TestCase):
             lifecycle,
             "_run_azd",
             side_effect=[
+                EXISTING_TOOLBOX,
                 version_list(("id-1", "1")),
                 version_list(("id-1", "1"), ("id-2", "2"), ("id-3", "3")),
             ],
@@ -91,6 +96,7 @@ class ToolboxVersionLifecycleTests(unittest.TestCase):
             lifecycle,
             "_run_azd",
             side_effect=[
+                EXISTING_TOOLBOX,
                 version_list(("id-1", "1")),
                 version_list(("id-1", "1"), ("id-2", "2")),
                 "",
@@ -102,6 +108,42 @@ class ToolboxVersionLifecycleTests(unittest.TestCase):
                 lifecycle.promote_deployed_version()
 
         self.assertTrue(lifecycle._baseline_path().exists())
+
+    def test_first_publication_records_empty_baseline_and_promotes_version_one(self) -> None:
+        with patch.object(
+            lifecycle,
+            "_run_azd",
+            side_effect=[
+                '{"toolboxes":[]}',
+                version_list(("id-1", "1")),
+                "",
+                version_list(("id-1", "1"), default="1"),
+            ],
+        ) as run_azd:
+            lifecycle.record_baseline()
+            baseline = json.loads(lifecycle._baseline_path().read_text(encoding="utf-8"))
+            self.assertEqual(baseline["version_ids"], [])
+            lifecycle.promote_deployed_version()
+        self.assertEqual(run_azd.call_count, 4)
+        self.assertFalse(lifecycle._baseline_path().exists())
+
+    def test_list_errors_never_become_an_empty_baseline(self) -> None:
+        for error in ("Forbidden", "Unauthorized", "connection failed", "not found"):
+            with self.subTest(error=error), patch.object(
+                lifecycle, "_run_azd", side_effect=RuntimeError(error),
+            ):
+                with self.assertRaisesRegex(RuntimeError, error):
+                    lifecycle.record_baseline()
+                self.assertFalse(lifecycle._baseline_path().exists())
+
+    def test_invalid_toolbox_lists_are_rejected(self) -> None:
+        for payload in ('{}', '{"toolboxes":[{}]}', 'not json', '{broken}', '{"toolboxes":null}'):
+            with self.subTest(payload=payload), patch.object(
+                lifecycle, "_run_azd", return_value=payload,
+            ):
+                with self.assertRaises(RuntimeError):
+                    lifecycle.record_baseline()
+                self.assertFalse(lifecycle._baseline_path().exists())
 
 
 if __name__ == "__main__":

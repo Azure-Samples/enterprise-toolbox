@@ -85,12 +85,23 @@ keep those lifecycles separate:
 - [PR validation](.github/workflows/validate.yml): runs automatically without
   Azure credentials.
 
-Both deployment workflows target the existing Azure Developer CLI environment
-`fibey-jf-1026`, but use separate protected GitHub Environments:
-`fibey-foundation` and `fibey-agent`. Configure their OIDC federation,
-environment variables, and Azure permissions separately; none are stored in
-the repository. Shared setup handles OIDC and azd tooling; generated local
-azd state is ignored rather than checked in.
+Each deployment owns its own parameter file, selected by its `parameter_file` input:
+
+- [`foundation/parameters.json`](foundation/parameters.json): infrastructure,
+  model/version/capacity, principal object ID, and external inventory/work-orders URLs.
+- [`agent/parameters.json`](agent/parameters.json): agent environment, target
+  project ID/endpoint, registry connection/hostname, model name, and toolbox URL.
+
+Foundation preview/provision needs no prior Fibey resources or deployment
+outputs. The agent targets the existing resources explicitly configured in its
+own file; it never discovers or imports another deployment's outputs. The two
+workflows do not share parameter files or local azd state.
+
+Use separate protected GitHub Environments, `fibey-foundation` and `fibey-agent`,
+with OIDC federation, Azure permissions, and authentication secrets
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`.
+Shared setup handles OIDC and pinned tooling; generated local azd state is
+ignored rather than checked in.
 See [docs/deployment.md](docs/deployment.md) for the workflow
 operations, required configuration, permissions, and local azd commands.
 

@@ -92,7 +92,28 @@ def _list_versions() -> tuple[dict[str, str], str | None]:
 
 
 def record_baseline() -> None:
-    versions, _ = _list_versions()
+    # versions list fails for an absent toolbox in azure.ai.toolboxes beta.12.
+    output = _run_azd("ai", "toolbox", "list", "--output", "json", "--no-prompt")
+    json_start = output.find("{")
+    if json_start < 0:
+        raise RuntimeError("azd returned no JSON while listing toolboxes.")
+    try:
+        payload: Any = json.loads(output[json_start:])
+    except json.JSONDecodeError as error:
+        raise RuntimeError("azd returned invalid JSON while listing toolboxes.") from error
+    if not isinstance(payload, dict) or not isinstance(payload.get("toolboxes"), list):
+        raise RuntimeError("The toolbox list has an unexpected JSON shape.")
+    names: set[str] = set()
+    for toolbox in payload["toolboxes"]:
+        if (
+            not isinstance(toolbox, dict)
+            or not isinstance(toolbox.get("name"), str)
+            or not toolbox["name"]
+            or toolbox["name"] in names
+        ):
+            raise RuntimeError("The toolbox list contains an invalid or duplicate entry.")
+        names.add(toolbox["name"])
+    versions, _ = _list_versions() if TOOLBOX_NAME in names else ({}, None)
     path = _baseline_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_suffix(".tmp")

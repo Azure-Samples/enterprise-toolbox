@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 
 # Agent lifecycle: deploys ONLY the hosted fibey-agent into an existing Foundry
-# project created by ../foundation. Foundation values (project endpoint, ACR,
-# model, toolbox URL) come from the azd environment; see scripts/sync-foundation-env.sh.
+# project. Project endpoint, ACR, model, and toolbox URL are configured independently
+# in agent/parameters.json; no foundation deployment outputs are imported.
 requiredVersions:
     extensions:
         azure.ai.agents: '>=0.1.0-preview'
