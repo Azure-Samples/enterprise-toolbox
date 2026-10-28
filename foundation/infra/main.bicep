@@ -35,18 +35,18 @@ param aiFoundryResourceName string = ''
 @description('Name of the AI Foundry project.')
 param aiFoundryProjectName string = 'fibey-project'
 
-@description('Model deployments requested by the azd AI agent extension (JSON).')
-param aiProjectDeploymentsJson string = '[]'
+@description('Model deployments requested by the azd AI agent extension.')
+param aiProjectDeployments array = []
 
-@description('Project connections requested by the azd AI agent extension (JSON).')
-param aiProjectConnectionsJson string = '[]'
+@description('Project connections requested by the azd AI agent extension.')
+param aiProjectConnections array = []
 
 @secure()
 @description('JSON map of connection name to credentials object.')
 param aiProjectConnectionCredentialsJson string = '{}'
 
-@description('Dependent resources requested by the azd AI agent extension (JSON).')
-param aiProjectDependentResourcesJson string = '[]'
+@description('Dependent resources requested by the azd AI agent extension.')
+param aiProjectDependentResources array = []
 
 @description('Enable hosted agent support (ACR connection + capability host) on the Foundry project.')
 param enableHostedAgents bool = true
@@ -103,10 +103,10 @@ module resources 'resources.bicep' = {
     resourceTokenSalt: resourceTokenSalt
     aiFoundryResourceName: aiFoundryResourceName
     aiFoundryProjectName: aiFoundryProjectName
-    aiProjectDeploymentsJson: aiProjectDeploymentsJson
-    aiProjectConnectionsJson: aiProjectConnectionsJson
+    aiProjectDeployments: aiProjectDeployments
+    aiProjectConnections: aiProjectConnections
     aiProjectConnectionCredentialsJson: aiProjectConnectionCredentialsJson
-    aiProjectDependentResourcesJson: aiProjectDependentResourcesJson
+    aiProjectDependentResources: aiProjectDependentResources
     enableHostedAgents: enableHostedAgents
     enableCapabilityHost: enableCapabilityHost
     enableMonitoring: enableMonitoring

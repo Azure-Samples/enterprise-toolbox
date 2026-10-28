@@ -32,16 +32,16 @@
     "aiFoundryProjectName": {
       "value": "${AZURE_AI_PROJECT_NAME=fibey-project}"
     },
-    "aiProjectDeploymentsJson": {
+    "aiProjectDeployments": {
       "value": "${AI_PROJECT_DEPLOYMENTS=[]}"
     },
-    "aiProjectConnectionsJson": {
+    "aiProjectConnections": {
       "value": "${AI_PROJECT_CONNECTIONS=[]}"
     },
     "aiProjectConnectionCredentialsJson": {
       "value": "${AI_PROJECT_CONNECTION_CREDENTIALS={}}"
     },
-    "aiProjectDependentResourcesJson": {
+    "aiProjectDependentResources": {
       "value": "${AI_PROJECT_DEPENDENT_RESOURCES=[]}"
     },
     "enableHostedAgents": {

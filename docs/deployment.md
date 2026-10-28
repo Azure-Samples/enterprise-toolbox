@@ -130,6 +130,10 @@ file supplies names, regions, model/version/capacity, feature
 flags, knowledge-base/index names, non-secret extension inputs, and external
 service URLs. Use native JSON booleans, integers, and arrays. Do not put
 credentials, connection secrets, or credential-bearing URLs in this file.
+`AI_PROJECT_DEPLOYMENTS`, `AI_PROJECT_CONNECTIONS`, and
+`AI_PROJECT_DEPENDENT_RESOURCES` map to native Bicep array parameters. azd
+decodes their JSON environment values before submitting them to ARM; keep
+empty values as `[]`, not quoted JSON strings or ARM-escaped bracket strings.
 Principal ID/type fields are retained for direct local azd use but are ignored
 by the foundation GitHub Actions initializer. Offline `foundation-validate`
 does not resolve an identity or require Azure login.

@@ -1,5 +1,5 @@
 {
-  "AZURE_ENV_NAME": "fibey-jf-1026",
+  "AZURE_ENV_NAME": "fibey-ent",
   "AZURE_LOCATION": "eastus2",
   "AZURE_AI_DEPLOYMENTS_LOCATION": "",
   "AZURE_SEARCH_LOCATION": "centralus",

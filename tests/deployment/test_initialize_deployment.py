@@ -222,6 +222,35 @@ class InitializeDeploymentTests(unittest.TestCase):
         self.assertEqual(settings["AZURE_TENANT_ID"], "tenant-123")
         self.assertEqual(self.export.read_text(encoding="utf-8"), "AZURE_ENV_NAME=independent-agent\n")
 
+    def test_foundation_arrays_map_to_native_bicep_parameters(self) -> None:
+        mappings = {
+            "aiProjectDeployments": "AI_PROJECT_DEPLOYMENTS",
+            "aiProjectConnections": "AI_PROJECT_CONNECTIONS",
+            "aiProjectDependentResources": "AI_PROJECT_DEPENDENT_RESOURCES",
+        }
+        infra = ROOT / "foundation/infra"
+        parameters = json.loads((infra / "main.parameters.json").read_text())["parameters"]
+        main = (infra / "main.bicep").read_text()
+        resources = (infra / "resources.bicep").read_text()
+        for parameter, setting in mappings.items():
+            with self.subTest(parameter=parameter):
+                self.assertEqual(parameters[parameter]["value"], "${" + setting + "=[]}")
+                self.assertIn(f"param {parameter} array = []", main)
+                self.assertIn(f"{parameter}: {parameter}", main)
+                self.assertIn(f"param {parameter} array", resources)
+                self.assertNotIn(parameter + "Json", main + resources)
+
+        for array in ([], [{"name": "example", "metadata": {"description": "quotes \" and [brackets]"}}]):
+            with self.subTest(array=array):
+                parameters = self.foundation | {setting: array for setting in mappings.values()}
+                self.file.write_text(json.dumps(parameters), encoding="utf-8")
+                self.log.unlink(missing_ok=True)
+                result = self._run("foundation-preview", "foundation")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                settings = dict(item.split("=", 1) for item in self._commands()[1][2:-4])
+                for setting in mappings.values():
+                    self.assertEqual(json.loads(settings[setting]), array)
+
     def test_validation_modes_check_json_without_azure_or_azd(self) -> None:
         for lifecycle, filename in (
             ("foundation-validate", ROOT / "foundation/parameters.json"),
