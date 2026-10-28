@@ -1,0 +1,278 @@
+targetScope = 'resourceGroup'
+
+@description('Unique environment name used for resource naming.')
+param environmentName string
+
+@description('Primary Azure region for all resources.')
+param location string
+
+@description('Azure region for the AI Foundry account and model deployments.')
+param aiDeploymentsLocation string
+
+@description('Azure region for the AI Search service.')
+param searchServiceLocation string
+
+@description('Tags applied to all resources.')
+param tags object
+
+@description('Id of the user or app to assign application roles.')
+param principalId string
+
+@description('Principal type of user or app.')
+param principalType string
+
+@description('Optional salt to diversify resource names across project recreations.')
+param resourceTokenSalt string
+
+@description('Optional. Name of the AI Foundry (AI Services) account.')
+param aiFoundryResourceName string
+
+@description('Name of the AI Foundry project.')
+param aiFoundryProjectName string
+
+@description('Model deployments requested by the azd AI agent extension (JSON).')
+param aiProjectDeploymentsJson string
+
+@description('Project connections requested by the azd AI agent extension (JSON).')
+param aiProjectConnectionsJson string
+
+@secure()
+@description('JSON map of connection name to credentials object.')
+param aiProjectConnectionCredentialsJson string
+
+@description('Dependent resources requested by the azd AI agent extension (JSON).')
+param aiProjectDependentResourcesJson string
+
+@description('Enable hosted agent support on the Foundry project.')
+param enableHostedAgents bool
+
+@description('Enable the capability host for hosted agents.')
+param enableCapabilityHost bool
+
+@description('Enable monitoring for the Foundry project.')
+param enableMonitoring bool
+
+@description('Model deployment name used by the agent and gateway.')
+param foundryModel string
+
+@description('Capacity (TPM, in thousands) for the Foundry model deployment.')
+param foundryModelCapacity int
+
+@description('Name of the Foundry Toolbox the agent connects to.')
+param toolboxName string
+
+@description('Name of the AI Search knowledge base.')
+param knowledgeBaseName string
+
+var aiProjectDeployments = json(aiProjectDeploymentsJson)
+var aiProjectConnections = json(aiProjectConnectionsJson)
+var aiProjectConnectionCreds = json(aiProjectConnectionCredentialsJson)
+var aiProjectDependentResources = json(aiProjectDependentResourcesJson)
+
+// When the azd AI agent extension hasn't requested any model deployments
+// (e.g. plain `azd provision`), fall back to deploying the default model.
+// When the extension does supply deployments, override the capacity of the
+// primary model so `azd up` doesn't reset a manually tuned TPM back to the
+// extension default.
+var effectiveDeployments = empty(aiProjectDeployments) ? [
+  {
+    name: foundryModel
+    model: {
+      name: foundryModel
+      format: 'OpenAI'
+      version: '2025-04-14'
+    }
+    sku: {
+      name: 'GlobalStandard'
+      capacity: foundryModelCapacity
+    }
+  }
+] : map(aiProjectDeployments, d => d.name == foundryModel ? union(d, {
+  sku: union(d.sku, { capacity: foundryModelCapacity })
+}) : d)
+
+var resourceToken = toLower(uniqueString(subscription().subscriptionId, resourceGroup().id, environmentName))
+var sanitizedEnvironmentName = replace(toLower(environmentName), '-', '')
+
+var logAnalyticsWorkspaceName = '${environmentName}-logs'
+var registryName = 'acr${take(sanitizedEnvironmentName, 15)}${take(resourceToken, 8)}'
+var storageAccountName = 'st${take(sanitizedEnvironmentName, 10)}${take(resourceToken, 12)}'
+var searchServiceName = '${environmentName}-search'
+
+
+var searchEndpoint = 'https://${searchServiceName}.search.windows.net'
+var knowledgeBaseMcpEndpoint = '${searchEndpoint}/knowledgebases/${knowledgeBaseName}/mcp?api-version=2026-05-01-preview'
+var kbConnectionName = 'kb-${knowledgeBaseName}'
+
+// Built-in role definition IDs
+var roleSearchIndexDataReader = '1407120a-92aa-4202-b7e9-c0e197c71c8f'
+var roleStorageBlobDataReader = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+var roleStorageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+
+module logAnalytics 'modules/log-analytics.bicep' = {
+  name: 'log-analytics'
+  params: {
+    name: logAnalyticsWorkspaceName
+    location: location
+    tags: tags
+  }
+}
+
+module containerRegistry 'modules/container-registry.bicep' = {
+  name: 'container-registry'
+  params: {
+    name: registryName
+    location: location
+    tags: tags
+  }
+}
+
+module storageAccount 'modules/storage-account.bicep' = {
+  name: 'storage-account'
+  params: {
+    name: storageAccountName
+    location: location
+    tags: tags
+  }
+}
+
+module aiSearch 'modules/ai-search.bicep' = {
+  name: 'ai-search'
+  params: {
+    name: searchServiceName
+    location: searchServiceLocation
+    tags: tags
+    sku: 'basic'
+  }
+}
+
+// ─── AI Foundry account, project, model deployments, hosted agent support ───
+
+module aiProject 'core/ai/ai-project.bicep' = {
+  name: 'ai-project'
+  params: {
+    tags: tags
+    location: aiDeploymentsLocation
+    resourceTokenSalt: resourceTokenSalt
+    aiFoundryProjectName: aiFoundryProjectName
+    existingAiAccountName: aiFoundryResourceName
+    principalId: principalId
+    principalType: principalType
+    deployments: effectiveDeployments
+    connections: union(aiProjectConnections, [
+      {
+        // Foundry connection to the AI Search knowledge base MCP endpoint.
+        // The knowledge base itself is created post-provision by
+        // scripts/setup-knowledge-base.sh.
+        name: kbConnectionName
+        category: 'RemoteTool'
+        target: knowledgeBaseMcpEndpoint
+        authType: 'ProjectManagedIdentity'
+        isSharedToAll: true
+        audience: 'https://search.azure.com/'
+        metadata: {
+          ApiType: 'Azure'
+        }
+      }
+    ])
+    connectionCredentials: aiProjectConnectionCreds
+    additionalDependentResources: aiProjectDependentResources
+    enableMonitoring: enableMonitoring
+    enableHostedAgents: enableHostedAgents
+    enableCapabilityHost: enableCapabilityHost
+    existingContainerRegistryResourceId: containerRegistry.outputs.id
+    existingContainerRegistryEndpoint: containerRegistry.outputs.loginServer
+  }
+}
+
+var foundryProjectEndpoint = aiProject.outputs.FOUNDRY_PROJECT_ENDPOINT
+var toolboxMcpUrl = '${foundryProjectEndpoint}/toolboxes/${toolboxName}/mcp'
+
+// ─── RBAC ───
+
+// AI Search managed identity reads FoundryIQ documents from blob storage
+resource storageAccountRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageAccountName
+  dependsOn: [
+    storageAccount
+  ]
+}
+
+resource searchBlobReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccountRef.id, searchServiceName, 'Storage Blob Data Reader')
+  scope: storageAccountRef
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleStorageBlobDataReader)
+    principalId: aiSearch.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Deploying user uploads FoundryIQ documents in the postprovision hook
+// (key-based auth is disabled on the storage account)
+resource deployerBlobContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  name: guid(storageAccountRef.id, principalId, roleStorageBlobDataContributor)
+  scope: storageAccountRef
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleStorageBlobDataContributor)
+    principalId: principalId
+    principalType: principalType
+  }
+}
+
+// Foundry project + account identities query the knowledge base on AI Search
+resource searchServiceRef 'Microsoft.Search/searchServices@2024-06-01-preview' existing = {
+  name: searchServiceName
+  dependsOn: [
+    aiSearch
+  ]
+}
+
+resource projectSearchReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(searchServiceRef.id, aiFoundryProjectName, roleSearchIndexDataReader)
+  scope: searchServiceRef
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleSearchIndexDataReader)
+    principalId: aiProject.outputs.projectPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource accountSearchReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(searchServiceRef.id, 'ai-account', roleSearchIndexDataReader)
+  scope: searchServiceRef
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleSearchIndexDataReader)
+    principalId: aiProject.outputs.aiServicesPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// The search service managed identity calls the Azure OpenAI deployment for
+// knowledge base query planning and answer synthesis.
+module searchServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
+  name: 'search-service-ai-roles'
+  params: {
+    aiAccountName: aiProject.outputs.aiServicesAccountName
+    principalId: aiSearch.outputs.principalId
+  }
+}
+
+// ─── Outputs ───
+
+output aiAccountId string = aiProject.outputs.accountId
+output aiProjectId string = aiProject.outputs.projectId
+output aiAccountName string = aiProject.outputs.aiServicesAccountName
+output aiProjectName string = aiProject.outputs.projectName
+output foundryProjectEndpoint string = foundryProjectEndpoint
+output azureOpenAiEndpoint string = aiProject.outputs.AZURE_OPENAI_ENDPOINT
+output applicationInsightsConnectionString string = aiProject.outputs.APPLICATIONINSIGHTS_CONNECTION_STRING
+output applicationInsightsResourceId string = aiProject.outputs.APPLICATIONINSIGHTS_RESOURCE_ID
+output acrConnectionName string = aiProject.outputs.dependentResources.registry.connectionName
+output toolboxMcpUrl string = toolboxMcpUrl
+output knowledgeBaseMcpEndpoint string = knowledgeBaseMcpEndpoint
+output knowledgeBaseConnectionName string = kbConnectionName
+output searchServiceName string = aiSearch.outputs.name
+output searchServiceEndpoint string = aiSearch.outputs.endpoint
+output storageAccountName string = storageAccount.outputs.name
+output registryLoginServer string = containerRegistry.outputs.loginServer

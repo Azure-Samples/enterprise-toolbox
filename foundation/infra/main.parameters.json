@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "resourceGroupName": {
+      "value": "${AZURE_RESOURCE_GROUP=}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "aiDeploymentsLocation": {
+      "value": "${AZURE_AI_DEPLOYMENTS_LOCATION=}"
+    },
+    "searchServiceLocation": {
+      "value": "${AZURE_SEARCH_LOCATION=}"
+    },
+    "principalId": {
+      "value": "${AZURE_PRINCIPAL_ID}"
+    },
+    "principalType": {
+      "value": "${AZURE_PRINCIPAL_TYPE=User}"
+    },
+    "resourceTokenSalt": {
+      "value": "${AZD_RESOURCE_TOKEN_SALT=}"
+    },
+    "aiFoundryResourceName": {
+      "value": "${AZURE_AI_ACCOUNT_NAME=}"
+    },
+    "aiFoundryProjectName": {
+      "value": "${AZURE_AI_PROJECT_NAME=fibey-project}"
+    },
+    "aiProjectDeploymentsJson": {
+      "value": "${AI_PROJECT_DEPLOYMENTS=[]}"
+    },
+    "aiProjectConnectionsJson": {
+      "value": "${AI_PROJECT_CONNECTIONS=[]}"
+    },
+    "aiProjectConnectionCredentialsJson": {
+      "value": "${AI_PROJECT_CONNECTION_CREDENTIALS={}}"
+    },
+    "aiProjectDependentResourcesJson": {
+      "value": "${AI_PROJECT_DEPENDENT_RESOURCES=[]}"
+    },
+    "enableHostedAgents": {
+      "value": "${ENABLE_HOSTED_AGENTS=true}"
+    },
+    "enableCapabilityHost": {
+      "value": "${ENABLE_CAPABILITY_HOST=true}"
+    },
+    "enableMonitoring": {
+      "value": "${ENABLE_MONITORING=true}"
+    },
+    "foundryModel": {
+      "value": "${FOUNDRY_MODEL=gpt-4.1-mini}"
+    },
+    "foundryModelCapacity": {
+      "value": "${FOUNDRY_MODEL_CAPACITY=100}"
+    },
+    "toolboxName": {
+      "value": "${TOOLBOX_NAME=fibey-toolbox}"
+    },
+    "knowledgeBaseName": {
+      "value": "${KB_NAME=fibey-field-ops-kb}"
+    },
+    "searchIndexName": {
+      "value": "${AZURE_SEARCH_INDEX=foundry-iq-docs-index}"
+    }
+  }
+}

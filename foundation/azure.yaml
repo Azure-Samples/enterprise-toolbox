@@ -1,0 +1,429 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+# The Foundry Toolbox is a first-class azd service. Deploy and version it with
+# `azd deploy fibey-toolbox` after the project connections exist.
+name: fibey-foundation
+metadata:
+  template: fibey-foundation
+infra:
+  provider: bicep
+  path: infra
+  module: main
+hooks:
+  postprovision:
+    - shell: sh
+      run: ./scripts/setup-knowledge-base.sh
+      interactive: false
+services:
+  fibey-toolbox:
+    host: azure.ai.toolbox
+    env:
+      INVENTORY_MCP_URL: ${INVENTORY_MCP_URL}
+      WORK_ORDERS_API_URL: ${WORK_ORDERS_API_URL}
+      KB_MCP_URL: ${KB_MCP_URL}
+      KB_CONNECTION_NAME: ${KB_CONNECTION_NAME}
+    description: 'Fibey Field Ops toolbox: inventory, work orders, and knowledge base.'
+    hooks:
+      predeploy:
+        - shell: sh
+          run: python3 ./scripts/toolbox-version-lifecycle.py before
+          interactive: false
+      postdeploy:
+        - shell: sh
+          run: python3 ./scripts/toolbox-version-lifecycle.py after
+          interactive: false
+    tools:
+    - type: toolbox_search_preview
+    - type: mcp
+      server_label: inventory
+      server_url: ${INVENTORY_MCP_URL}
+      require_approval: never
+    - type: openapi
+      name: work_orders
+      openapi:
+        name: work_orders
+        spec:
+          components:
+            schemas:
+              HTTPValidationError:
+                properties:
+                  detail:
+                    items:
+                      $ref: '#/components/schemas/ValidationError'
+                    title: Detail
+                    type: array
+                title: HTTPValidationError
+                type: object
+              PartNeeded:
+                properties:
+                  part_id:
+                    pattern: ^FIB-\d{3}$
+                    title: Part Id
+                    type: string
+                  quantity:
+                    minimum: 1.0
+                    title: Quantity
+                    type: integer
+                required:
+                - part_id
+                - quantity
+                title: PartNeeded
+                type: object
+              ValidationError:
+                properties:
+                  ctx:
+                    title: Context
+                    type: object
+                  input:
+                    title: Input
+                  loc:
+                    items:
+                      anyOf:
+                      - type: string
+                      - type: integer
+                    title: Location
+                    type: array
+                  msg:
+                    title: Message
+                    type: string
+                  type:
+                    title: Error Type
+                    type: string
+                required:
+                - loc
+                - msg
+                - type
+                title: ValidationError
+                type: object
+              WorkOrder:
+                properties:
+                  assigned_technician:
+                    title: Assigned Technician
+                    type: string
+                  created_at:
+                    format: date-time
+                    title: Created At
+                    type: string
+                  description:
+                    title: Description
+                    type: string
+                  due_date:
+                    format: date-time
+                    title: Due Date
+                    type: string
+                  id:
+                    pattern: ^WO-\d{3}$
+                    title: Id
+                    type: string
+                  location:
+                    title: Location
+                    type: string
+                  parts_needed:
+                    items:
+                      $ref: '#/components/schemas/PartNeeded'
+                    title: Parts Needed
+                    type: array
+                  priority:
+                    enum:
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    title: Priority
+                    type: string
+                  status:
+                    enum:
+                    - open
+                    - in_progress
+                    - completed
+                    - cancelled
+                    title: Status
+                    type: string
+                  title:
+                    title: Title
+                    type: string
+                  updated_at:
+                    format: date-time
+                    title: Updated At
+                    type: string
+                required:
+                - id
+                - title
+                - description
+                - status
+                - priority
+                - assigned_technician
+                - location
+                - created_at
+                - updated_at
+                - due_date
+                title: WorkOrder
+                type: object
+              WorkOrderCreate:
+                additionalProperties: false
+                properties:
+                  assigned_technician:
+                    title: Assigned Technician
+                    type: string
+                  description:
+                    title: Description
+                    type: string
+                  due_date:
+                    format: date-time
+                    title: Due Date
+                    type: string
+                  location:
+                    title: Location
+                    type: string
+                  parts_needed:
+                    items:
+                      $ref: '#/components/schemas/PartNeeded'
+                    title: Parts Needed
+                    type: array
+                  priority:
+                    enum:
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    title: Priority
+                    type: string
+                  status:
+                    default: open
+                    enum:
+                    - open
+                    - in_progress
+                    - completed
+                    - cancelled
+                    title: Status
+                    type: string
+                  title:
+                    title: Title
+                    type: string
+                required:
+                - title
+                - description
+                - priority
+                - assigned_technician
+                - location
+                - due_date
+                title: WorkOrderCreate
+                type: object
+              WorkOrderUpdate:
+                additionalProperties: false
+                properties:
+                  assigned_technician:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                    title: Assigned Technician
+                  description:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                    title: Description
+                  due_date:
+                    anyOf:
+                    - format: date-time
+                      type: string
+                    - type: 'null'
+                    title: Due Date
+                  location:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                    title: Location
+                  parts_needed:
+                    anyOf:
+                    - items:
+                        $ref: '#/components/schemas/PartNeeded'
+                      type: array
+                    - type: 'null'
+                    title: Parts Needed
+                  priority:
+                    anyOf:
+                    - enum:
+                      - low
+                      - medium
+                      - high
+                      - critical
+                      type: string
+                    - type: 'null'
+                    title: Priority
+                  status:
+                    anyOf:
+                    - enum:
+                      - open
+                      - in_progress
+                      - completed
+                      - cancelled
+                      type: string
+                    - type: 'null'
+                    title: Status
+                  title:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                    title: Title
+                title: WorkOrderUpdate
+                type: object
+          info:
+            title: Work Orders API
+            version: 0.1.0
+          openapi: 3.1.0
+          paths:
+            /health:
+              get:
+                operationId: health_check_health_get
+                responses:
+                  '200':
+                    content:
+                      application/json:
+                        schema:
+                          additionalProperties:
+                            anyOf:
+                            - type: string
+                            - type: integer
+                          title: Response Health Check Health Get
+                          type: object
+                    description: Successful Response
+                summary: Health Check
+            /work-orders:
+              get:
+                operationId: list_work_orders_work_orders_get
+                parameters:
+                - in: query
+                  name: status
+                  required: false
+                  schema:
+                    anyOf:
+                    - enum:
+                      - open
+                      - in_progress
+                      - completed
+                      - cancelled
+                      type: string
+                    - type: 'null'
+                    title: Status
+                - in: query
+                  name: priority
+                  required: false
+                  schema:
+                    anyOf:
+                    - enum:
+                      - low
+                      - medium
+                      - high
+                      - critical
+                      type: string
+                    - type: 'null'
+                    title: Priority
+                - in: query
+                  name: assigned_technician
+                  required: false
+                  schema:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                    title: Assigned Technician
+                responses:
+                  '200':
+                    content:
+                      application/json:
+                        schema:
+                          items:
+                            $ref: '#/components/schemas/WorkOrder'
+                          title: Response List Work Orders Work Orders Get
+                          type: array
+                    description: Successful Response
+                  '422':
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/HTTPValidationError'
+                    description: Validation Error
+                summary: List Work Orders
+              post:
+                operationId: create_work_order_work_orders_post
+                requestBody:
+                  content:
+                    application/json:
+                      schema:
+                        $ref: '#/components/schemas/WorkOrderCreate'
+                  required: true
+                responses:
+                  '201':
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/WorkOrder'
+                    description: Successful Response
+                  '422':
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/HTTPValidationError'
+                    description: Validation Error
+                summary: Create Work Order
+            /work-orders/{work_order_id}:
+              get:
+                operationId: get_work_order_work_orders__work_order_id__get
+                parameters:
+                - in: path
+                  name: work_order_id
+                  required: true
+                  schema:
+                    title: Work Order Id
+                    type: string
+                responses:
+                  '200':
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/WorkOrder'
+                    description: Successful Response
+                  '422':
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/HTTPValidationError'
+                    description: Validation Error
+                summary: Retrieve work order details by ID
+              patch:
+                operationId: update_work_order_work_orders__work_order_id__patch
+                parameters:
+                - in: path
+                  name: work_order_id
+                  required: true
+                  schema:
+                    title: Work Order Id
+                    type: string
+                requestBody:
+                  content:
+                    application/json:
+                      schema:
+                        $ref: '#/components/schemas/WorkOrderUpdate'
+                  required: true
+                responses:
+                  '200':
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/WorkOrder'
+                    description: Successful Response
+                  '422':
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/HTTPValidationError'
+                    description: Validation Error
+                summary: Update Work Order
+          servers:
+          - url: ${WORK_ORDERS_API_URL}
+        auth:
+          type: anonymous
+    - type: mcp
+      server_label: knowledge_base
+      server_url: ${KB_MCP_URL}
+      require_approval: never
+      project_connection_id: ${KB_CONNECTION_NAME}
