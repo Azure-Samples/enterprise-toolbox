@@ -106,20 +106,22 @@ bootstrap path. The resolver validates the selected deployment's subscription,
 resource group, account, and project before initializing azd state.
 
 Configure one environment-subject federated credential for each deployment
-identity:
+identity. For workflows running from `Azure-Samples/enterprise-toolbox`, use:
 
 | GitHub Environment | OIDC subject |
 |---|---|
-| `fibey-foundation` | `repo:JFolberth/fibey:environment:fibey-foundation` |
-| `fibey-agent` | `repo:JFolberth/fibey:environment:fibey-agent` |
+| `fibey-foundation` | `repo:Azure-Samples/enterprise-toolbox:environment:fibey-foundation` |
+| `fibey-agent` | `repo:Azure-Samples/enterprise-toolbox:environment:fibey-agent` |
 
 Use issuer `https://token.actions.githubusercontent.com` and audience
 `api://AzureADTokenExchange`. Protect both environments with required
-approvals and deployment-branch restrictions. The workflows do not create or
-configure deployment identities or federated credentials. Resource role
-assignments declared by foundation Bicep or the hosted-agent extension may
-still be applied to workload identities; the workflows do not grant additional
-permissions to their own identities.
+approvals and deployment-branch restrictions. If the workflows run from another
+repository, replace `Azure-Samples/enterprise-toolbox` with its owner/repository
+name in the subject. The workflows do not create or configure deployment
+identities or federated credentials. Resource role assignments declared by
+foundation Bicep or the hosted-agent extension may still be applied to workload
+identities; the workflows do not grant additional permissions to their own
+identities.
 
 The workflows share a non-cancelling GitHub concurrency group so their
 mutations do not overlap with each other. This does not serialize deployments
