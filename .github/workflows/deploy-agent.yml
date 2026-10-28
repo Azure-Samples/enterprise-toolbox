@@ -29,6 +29,7 @@ jobs:
     name: Safe hosted-agent preflight
     if: inputs.operation == 'preflight'
     runs-on: ubuntu-latest
+    environment: fibey-agent
     permissions:
       contents: read
       id-token: write
@@ -40,7 +41,7 @@ jobs:
       - name: Set up Azure deployment
         uses: ./.github/actions/setup-deployment
         with:
-          client-id: ${{ secrets.AZURE_AGENT_CLIENT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           extension-name: azure.ai.agents
@@ -66,6 +67,7 @@ jobs:
     name: Deploy only the hosted agent
     if: inputs.operation == 'deploy'
     runs-on: ubuntu-latest
+    environment: fibey-agent
     permissions:
       contents: read
       id-token: write
@@ -77,7 +79,7 @@ jobs:
       - name: Set up Azure deployment
         uses: ./.github/actions/setup-deployment
         with:
-          client-id: ${{ secrets.AZURE_AGENT_CLIENT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           extension-name: azure.ai.agents
