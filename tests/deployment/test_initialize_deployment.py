@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -12,6 +13,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / ".github/scripts/initialize-deployment.sh"
+SIGNED_IN_PRINCIPAL_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
 
 class InitializeDeploymentTests(unittest.TestCase):
@@ -74,7 +76,17 @@ class InitializeDeploymentTests(unittest.TestCase):
             "    raise SystemExit(7)\n",
         )
         self._write_executable(
-            "az", "#!/usr/bin/env bash\necho 'Unexpected Azure discovery' >&2\nexit 99\n",
+            "az",
+            "#!/usr/bin/env python3\n"
+            "import os, sys\n"
+            "if sys.argv[1:] != ['account', 'get-access-token', '--subscription', 'sub-123',\n"
+            "                    '--query', 'accessToken', '--output', 'tsv']:\n"
+            "    raise SystemExit('Unexpected Azure discovery')\n"
+            "if os.environ.get('OPERATION') not in ('foundation-preview', 'foundation-deploy'):\n"
+            "    raise SystemExit('Unexpected identity lookup')\n"
+            "if os.environ.get('FAIL_TOKEN'):\n"
+            "    raise SystemExit(8)\n"
+            "sys.stdout.write(os.environ['ACCESS_TOKEN'])\n",
         )
 
     def _write_executable(self, name: str, source: str) -> None:
@@ -94,7 +106,14 @@ class InitializeDeploymentTests(unittest.TestCase):
             "AZURE_SUBSCRIPTION_ID": "sub-123",
             "AZURE_TENANT_ID": "tenant-123",
             "COMMAND_LOG": str(self.log),
+            "ACCESS_TOKEN": self._token({"oid": SIGNED_IN_PRINCIPAL_ID}),
         }
+
+    def _token(self, claims: dict[str, object]) -> str:
+        payload = base64.urlsafe_b64encode(
+            json.dumps(claims, ensure_ascii=False).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+        return f"header.{payload}.signature"
 
     def _run(self, operation: str, project: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -120,7 +139,8 @@ class InitializeDeploymentTests(unittest.TestCase):
         self.assertEqual(commands[0][:3], ["env", "new", "fibey-jf-1026"])
         self.assertEqual(commands[1][:2], ["env", "set"])
         settings = dict(item.split("=", 1) for item in commands[1][2:-4])
-        self.assertEqual(settings["AZURE_PRINCIPAL_ID"], self.foundation["AZURE_PRINCIPAL_ID"])
+        self.assertEqual(settings["AZURE_PRINCIPAL_ID"], SIGNED_IN_PRINCIPAL_ID)
+        self.assertEqual(settings["AZURE_PRINCIPAL_TYPE"], "ServicePrincipal")
         self.assertEqual(settings["INVENTORY_MCP_URL"], self.foundation["INVENTORY_MCP_URL"])
         self.assertEqual(settings["FOUNDRY_MODEL_CAPACITY"], "100")
         self.assertEqual(settings["ENABLE_HOSTED_AGENTS"], "true")
@@ -128,6 +148,67 @@ class InitializeDeploymentTests(unittest.TestCase):
         self.assertEqual(settings["AZURE_TENANT_ID"], "tenant-123")
         self.assertEqual(self.export.read_text(encoding="utf-8"), "AZURE_ENV_NAME=fibey-jf-1026\n")
         self.assertNotIn("not-executed", result.stdout + result.stderr + self.summary.read_text())
+        self.assertNotIn("header.", result.stdout + result.stderr + self.summary.read_text())
+
+    def test_foundation_always_uses_signed_in_identity(self) -> None:
+        for operation in ("foundation-preview", "foundation-deploy"):
+            for principal in ("", "stale-principal", self.foundation["AZURE_PRINCIPAL_ID"], None):
+                with self.subTest(operation=operation, principal=principal):
+                    parameters = self.foundation | {
+                        "AZURE_PRINCIPAL_ID": principal,
+                        "AZURE_PRINCIPAL_TYPE": "User",
+                    }
+                    if principal is None:
+                        parameters.pop("AZURE_PRINCIPAL_ID")
+                        parameters.pop("AZURE_PRINCIPAL_TYPE")
+                    self.file.write_text(json.dumps(parameters), encoding="utf-8")
+                    self.log.unlink(missing_ok=True)
+                    result = self._run(operation, "foundation")
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    settings = dict(item.split("=", 1) for item in self._commands()[1][2:-4])
+                    self.assertEqual(settings["AZURE_PRINCIPAL_ID"], SIGNED_IN_PRINCIPAL_ID)
+                    self.assertEqual(settings["AZURE_PRINCIPAL_TYPE"], "ServicePrincipal")
+                    self.assertEqual(json.loads(self.file.read_text()), parameters)
+
+    def test_identity_lookup_failures_stop_before_azd_or_github_exports(self) -> None:
+        self.file.write_text(json.dumps(self.foundation), encoding="utf-8")
+        for overrides in (
+            {"FAIL_TOKEN": "true"},
+            {"ACCESS_TOKEN": ""},
+            {"ACCESS_TOKEN": "not-a-token"},
+            {"ACCESS_TOKEN": "header.%%%.signature"},
+            {"ACCESS_TOKEN": self._token({})},
+            {"ACCESS_TOKEN": self._token({"oid": ""})},
+            {"ACCESS_TOKEN": self._token({"oid": 123})},
+            {"ACCESS_TOKEN": self._token({"oid": "not-an-object-id"})},
+        ):
+            for operation in ("foundation-preview", "foundation-deploy"):
+                with self.subTest(overrides=overrides, operation=operation):
+                    result = subprocess.run(
+                        ["bash", str(SCRIPT)],
+                        env=self._environment(operation, "foundation") | overrides,
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("signed-in deployment principal", result.stderr)
+                    self.assertNotIn("header.", result.stdout + result.stderr)
+                    self.assertFalse(self.log.exists())
+                    self.assertFalse(self.export.exists())
+                    self.assertFalse(self.summary.exists())
+
+    def test_identity_token_supports_unpadded_base64url(self) -> None:
+        self.file.write_text(json.dumps(self.foundation), encoding="utf-8")
+        token = self._token({"oid": SIGNED_IN_PRINCIPAL_ID, "name": "\uffff"})
+        self.assertIn("_", token)
+        self.assertNotIn("=", token)
+        result = subprocess.run(
+            ["bash", str(SCRIPT)],
+            env=self._environment("foundation-preview", "foundation") | {"ACCESS_TOKEN": token},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = dict(item.split("=", 1) for item in self._commands()[1][2:-4])
+        self.assertEqual(settings["AZURE_PRINCIPAL_ID"], SIGNED_IN_PRINCIPAL_ID)
 
     def test_agent_file_supplies_all_target_settings_without_foundation_import(self) -> None:
         self.file.write_text(json.dumps(self.agent), encoding="utf-8")
@@ -161,7 +242,6 @@ class InitializeDeploymentTests(unittest.TestCase):
 
     def test_invalid_inputs_fail_before_azd_or_github_exports(self) -> None:
         cases = [
-            ("foundation-preview", self.foundation | {"AZURE_PRINCIPAL_ID": ""}),
             ("foundation-deploy", self.foundation | {"WORK_ORDERS_API_URL": ""}),
             ("agent", self.agent | {"TOOLBOX_MCP_URL": ""}),
             ("agent", self.agent | {"FOUNDRY_PROJECT_ENDPOINT": "https://different.example"}),

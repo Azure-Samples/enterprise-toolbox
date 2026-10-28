@@ -60,8 +60,13 @@ work-order creation or updates.
 ### Independent parameter-driven deployments
 
 1. Configure OIDC and the three authentication secrets below.
-2. Edit the foundation parameter file. Set `AZURE_PRINCIPAL_ID` to the foundation
-   deployment identity's **object ID**, not its OIDC client ID. Set
+2. Edit the foundation parameter file. Foundation preview and deployment always
+   resolve `AZURE_PRINCIPAL_ID` from the signed-in OIDC deployment identity and
+   set `AZURE_PRINCIPAL_TYPE` to `ServicePrincipal`, overriding both file values.
+   The initializer reads the object ID (`oid`) from the Azure CLI's ARM access
+   token without logging the token or requiring Microsoft Graph permissions.
+   Identity resolution failures stop initialization; there is no file fallback.
+   Set
    `INVENTORY_MCP_URL` and `WORK_ORDERS_API_URL` to the external services' HTTPS
    endpoints before `provision-and-toolbox`. Preview does not require these URLs.
    The checked-in blanks are intentionally unresolved, not placeholder services.
@@ -121,10 +126,13 @@ Configure these GitHub Environment secrets in both environments:
 - `AZURE_SUBSCRIPTION_ID`
 
 No GitHub Environment deployment variables are required. Foundation's parameter
-file supplies names, regions, principal ID/type, model/version/capacity, feature
+file supplies names, regions, model/version/capacity, feature
 flags, knowledge-base/index names, non-secret extension inputs, and external
 service URLs. Use native JSON booleans, integers, and arrays. Do not put
 credentials, connection secrets, or credential-bearing URLs in this file.
+Principal ID/type fields are retained for direct local azd use but are ignored
+by the foundation GitHub Actions initializer. Offline `foundation-validate`
+does not resolve an identity or require Azure login.
 `TOOLBOX_NAME` must remain `fibey-toolbox`: the pinned extension uses the
 manifest's service key as the deployed toolbox name.
 
