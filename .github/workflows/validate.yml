@@ -55,6 +55,7 @@ jobs:
         uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
         with:
           reporter: local
+          filter_mode: nofilter
           fail_level: error
           path: .github/scripts
       - name: Check foundation shell scripts
@@ -62,6 +63,7 @@ jobs:
         uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
         with:
           reporter: local
+          filter_mode: nofilter
           fail_level: error
           path: foundation/scripts
       - name: Run offline deployment tests
