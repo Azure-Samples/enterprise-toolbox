@@ -1,0 +1,109 @@
+name: Deploy Fibey hosted agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Agent operation to run
+        required: true
+        type: choice
+        options:
+          - preflight
+          - deploy
+        default: preflight
+      arm_deployment_name:
+        description: Explicit successful subscription-scope ARM deployment to use for context
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fibey-jf-1026-azure-mutation
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Safe hosted-agent preflight
+    if: inputs.operation == 'preflight'
+    runs-on: ubuntu-latest
+    environment: fibey-agent
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Azure deployment
+        uses: ./.github/actions/setup-deployment
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          extension-name: azure.ai.agents
+          extension-version: 1.0.0-beta.22
+      - name: Load selected foundation context
+        uses: ./.github/actions/load-foundation-context
+        with:
+          project-directory: agent
+          environment-name: fibey-jf-1026
+          resolver-path: foundation/scripts/resolve-deployment-context.py
+          deployment-name: ${{ inputs.arm_deployment_name }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          account-name: ${{ vars.AZURE_AI_ACCOUNT_NAME }}
+          project-name: ${{ vars.AZURE_AI_PROJECT_NAME }}
+          primary-region: ${{ vars.AZURE_PRIMARY_LOCATION }}
+          search-region: ${{ vars.AZURE_SEARCH_LOCATION }}
+          model-version: ${{ vars.FOUNDRY_MODEL_VERSION }}
+          model-capacity: ${{ vars.FOUNDRY_MODEL_CAPACITY }}
+
+  deploy:
+    name: Deploy only the hosted agent
+    if: inputs.operation == 'deploy'
+    runs-on: ubuntu-latest
+    environment: fibey-agent
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Azure deployment
+        uses: ./.github/actions/setup-deployment
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          extension-name: azure.ai.agents
+          extension-version: 1.0.0-beta.22
+      - name: Load selected foundation context
+        uses: ./.github/actions/load-foundation-context
+        with:
+          project-directory: agent
+          environment-name: fibey-jf-1026
+          resolver-path: foundation/scripts/resolve-deployment-context.py
+          deployment-name: ${{ inputs.arm_deployment_name }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          account-name: ${{ vars.AZURE_AI_ACCOUNT_NAME }}
+          project-name: ${{ vars.AZURE_AI_PROJECT_NAME }}
+          primary-region: ${{ vars.AZURE_PRIMARY_LOCATION }}
+          search-region: ${{ vars.AZURE_SEARCH_LOCATION }}
+          model-version: ${{ vars.FOUNDRY_MODEL_VERSION }}
+          model-capacity: ${{ vars.FOUNDRY_MODEL_CAPACITY }}
+      - name: Deploy the hosted-agent service only
+        uses: ./.github/actions/run-azd
+        with:
+          project-directory: agent
+          service: fibey-agent
+      - name: Verify the deployed agent and run a read-only inventory smoke test
+        working-directory: agent
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/agent-smoke.sh"

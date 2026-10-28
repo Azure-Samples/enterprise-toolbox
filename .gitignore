@@ -440,3 +440,7 @@ dist/
 .DS_Store
 *.DS_Store
 .env.copy
+
+# Local Azure Developer CLI state
+/foundation/.azure/
+/agent/.azure/

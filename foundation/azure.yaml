@@ -13,7 +13,7 @@ hooks:
   postprovision:
     - shell: sh
       run: ./scripts/setup-knowledge-base.sh
-      interactive: true
+      interactive: false
 services:
   fibey-toolbox:
     host: azure.ai.toolbox

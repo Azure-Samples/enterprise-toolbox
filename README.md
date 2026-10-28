@@ -73,17 +73,26 @@ Open the UI at <http://localhost:5173>.
 
 ## Deploy to Azure
 
-The full stack (UI, gateway, agent service, work-orders API, inventory MCP,
-AI Search, blob storage) deploys to Azure Container Apps via `azd`:
+Cloud deployment has two independent azd projects. The GitHub Actions workflows
+keep those lifecycles separate:
 
-```bash
-az login
-azd auth login
-azd up
-```
+- [Foundation workflow](.github/workflows/deploy-foundation.yml): manually preview
+  infrastructure changes or provision the foundation and then deploy the toolbox.
+  Preview is the default. Every successful deployment creates and promotes a new
+  toolbox version, even if the toolbox definition is unchanged.
+- [Agent workflow](.github/workflows/deploy-agent.yml): independently preflight
+  or deploy only the hosted `fibey-agent`. Preflight is the default.
+- [PR validation](.github/workflows/validate.yml): runs automatically without
+  Azure credentials.
 
-See [docs/deployment.md](docs/deployment.md) for the full deployment guide,
-including FoundryIQ knowledge base setup and post-deploy RBAC.
+Both deployment workflows target the existing Azure Developer CLI environment
+`fibey-jf-1026`, but use separate protected GitHub Environments:
+`fibey-foundation` and `fibey-agent`. Configure their OIDC federation,
+environment variables, and Azure permissions separately; none are stored in
+the repository. Shared setup handles OIDC and azd tooling; generated local
+azd state is ignored rather than checked in.
+See [docs/deployment.md](docs/deployment.md) for the workflow
+operations, required configuration, permissions, and local azd commands.
 
 ## Documentation
 

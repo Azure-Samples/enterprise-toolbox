@@ -1,0 +1,138 @@
+name: Deploy Fibey foundation
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Foundation operation to run
+        required: true
+        type: choice
+        options:
+          - preview
+          - provision-and-toolbox
+        default: preview
+      arm_deployment_name:
+        description: Explicit successful subscription-scope ARM deployment to use for context
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fibey-jf-1026-azure-mutation
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: Safe foundation preview
+    if: inputs.operation == 'preview'
+    runs-on: ubuntu-latest
+    environment: fibey-foundation
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Azure deployment
+        uses: ./.github/actions/setup-deployment
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          extension-name: azure.ai.toolboxes
+          extension-version: 1.0.0-beta.12
+      - name: Load selected foundation context
+        uses: ./.github/actions/load-foundation-context
+        with:
+          project-directory: foundation
+          environment-name: fibey-jf-1026
+          resolver-path: foundation/scripts/resolve-deployment-context.py
+          deployment-name: ${{ inputs.arm_deployment_name }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          account-name: ${{ vars.AZURE_AI_ACCOUNT_NAME }}
+          project-name: ${{ vars.AZURE_AI_PROJECT_NAME }}
+          primary-region: ${{ vars.AZURE_PRIMARY_LOCATION }}
+          search-region: ${{ vars.AZURE_SEARCH_LOCATION }}
+          model-version: ${{ vars.FOUNDRY_MODEL_VERSION }}
+          model-capacity: ${{ vars.FOUNDRY_MODEL_CAPACITY }}
+          principal-id: ${{ vars.AZURE_PRINCIPAL_ID }}
+          principal-type: ${{ vars.AZURE_PRINCIPAL_TYPE || 'ServicePrincipal' }}
+      - name: Verify preview principal is configured
+        env:
+          PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
+        run: |
+          if [ -z "$PRINCIPAL_ID" ]; then
+            echo "AZURE_PRINCIPAL_ID is required to preview the approved Bicep role assignments." >&2
+            exit 1
+          fi
+      - name: Run safe azd preview
+        working-directory: foundation
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/azd-preview.sh"
+
+  provision-and-toolbox:
+    name: Foundation provision and toolbox deploy
+    if: inputs.operation == 'provision-and-toolbox'
+    runs-on: ubuntu-latest
+    environment: fibey-foundation
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Azure deployment
+        uses: ./.github/actions/setup-deployment
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          extension-name: azure.ai.toolboxes
+          extension-version: 1.0.0-beta.12
+      - name: Load selected foundation context
+        uses: ./.github/actions/load-foundation-context
+        with:
+          project-directory: foundation
+          environment-name: fibey-jf-1026
+          resolver-path: foundation/scripts/resolve-deployment-context.py
+          deployment-name: ${{ inputs.arm_deployment_name }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          account-name: ${{ vars.AZURE_AI_ACCOUNT_NAME }}
+          project-name: ${{ vars.AZURE_AI_PROJECT_NAME }}
+          primary-region: ${{ vars.AZURE_PRIMARY_LOCATION }}
+          search-region: ${{ vars.AZURE_SEARCH_LOCATION }}
+          model-version: ${{ vars.FOUNDRY_MODEL_VERSION }}
+          model-capacity: ${{ vars.FOUNDRY_MODEL_CAPACITY }}
+          inventory-mcp-url: ${{ vars.INVENTORY_MCP_URL }}
+          work-orders-api-url: ${{ vars.WORK_ORDERS_API_URL }}
+          require-toolbox-endpoints: true
+          principal-id: ${{ vars.AZURE_PRINCIPAL_ID }}
+          principal-type: ${{ vars.AZURE_PRINCIPAL_TYPE || 'ServicePrincipal' }}
+      - name: Verify provision principal is configured
+        env:
+          PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
+        run: |
+          if [ -z "$PRINCIPAL_ID" ]; then
+            echo "AZURE_PRINCIPAL_ID is required before provisioning can assign roles." >&2
+            exit 1
+          fi
+      - name: Provision foundation
+        uses: ./.github/actions/run-azd
+        with:
+          project-directory: foundation
+          command: provision
+      - name: Deploy the toolbox service only
+        uses: ./.github/actions/run-azd
+        with:
+          project-directory: foundation
+          service: fibey-toolbox
+          verify-promotion: true

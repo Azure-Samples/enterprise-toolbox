@@ -1,11 +1,15 @@
 .git
 .github
+.vscode
 .venv
 __pycache__
 *.pyc
 .env
 .azure
 .foundry
+**/.env*
+**/.azure
+**/.foundry
 node_modules
 docs
 tests
@@ -14,6 +18,8 @@ ui
 infra
 infra-agent
 services
+foundation
+agent
 README.md
 CHANGELOG.md
 CONTRIBUTING.md

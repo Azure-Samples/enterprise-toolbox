@@ -20,6 +20,8 @@ SEARCH_API_VERSION="2024-07-01"
 # LLM on non-web knowledge sources (the toolbox calls the KB MCP endpoint with
 # reasoning effort above minimal, which needs a model attached).
 KNOWLEDGE_API_VERSION="2026-05-01-preview"
+INDEXER_TIMEOUT_SECONDS=600
+INDEXER_POLL_INTERVAL_SECONDS=15
 
 # ─── Resolve configuration from the azd environment ────────────────────
 env_value() {
@@ -44,8 +46,15 @@ if [ -z "$RESOURCE_GROUP" ] || [ -z "$STORAGE_ACCOUNT" ] || [ -z "$SEARCH_SERVIC
   exit 1
 fi
 
+if [ -z "$AOAI_ENDPOINT" ]; then
+  echo "Could not resolve AZURE_OPENAI_ENDPOINT from the azd environment."
+  exit 1
+fi
+
 SEARCH_ENDPOINT="https://${SEARCH_SERVICE}.search.windows.net"
 MCP_ENDPOINT="${SEARCH_ENDPOINT}/knowledgebases/${KB_NAME}/mcp"
+INDEXER_STATUS_URL="${SEARCH_ENDPOINT}/indexers('${INDEXER_NAME}')/search.status?api-version=${SEARCH_API_VERSION}"
+INDEXER_RUN_URL="${SEARCH_ENDPOINT}/indexers('${INDEXER_NAME}')/search.run?api-version=${SEARCH_API_VERSION}"
 
 # Retry helper for transient search-service errors (503s while warming up)
 retry() {
@@ -55,7 +64,7 @@ retry() {
       return 0
     fi
     if [ "$i" -lt "$attempts" ]; then
-      echo "  Attempt ${i}/${attempts} failed — retrying in ${delay}s..."
+      echo "  Attempt ${i}/${attempts} failed — retrying in ${delay}s..." >&2
       sleep "$delay"
     fi
   done
@@ -73,6 +82,15 @@ if [ -z "$SEARCH_ADMIN_KEY" ]; then
     --service-name "$SEARCH_SERVICE" \
     --resource-group "$RESOURCE_GROUP" \
     --query primaryKey -o tsv)
+fi
+
+if [ -z "$SEARCH_ADMIN_KEY" ]; then
+  echo "Could not retrieve an AI Search admin key."
+  exit 1
+fi
+
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo "::add-mask::${SEARCH_ADMIN_KEY}"
 fi
 
 echo ""
@@ -175,25 +193,80 @@ echo "✓ Indexer created"
 # ─── 5. Run indexer ────────────────────────────────────────────────────
 echo ""
 echo "=== Running indexer ==="
-curl -sS -o /dev/null -X POST "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}/run?api-version=${SEARCH_API_VERSION}" \
+get_indexer_status() {
+  curl --fail --retry 5 --retry-connrefused --retry-delay 2 -sS "$INDEXER_STATUS_URL" \
+    -H "api-key: ${SEARCH_ADMIN_KEY}"
+}
+
+parse_indexer_result() {
+  python3 -c '
+import json
+import sys
+
+status = json.load(sys.stdin)
+last_result = (status.get("lastResult") or {})
+values = (
+    status.get("status") or "",
+    last_result.get("status") or "",
+    last_result.get("startTime") or "",
+    last_result.get("endTime") or "",
+    int(last_result.get("itemsProcessed") or 0),
+    int(last_result.get("itemsFailed") or 0),
+)
+print("|".join(str(value) for value in values))
+'
+}
+
+PREVIOUS_RESULT="$(get_indexer_status | parse_indexer_result)"
+IFS='|' read -r PREVIOUS_INDEXER_STATUS _ PREVIOUS_START_TIME PREVIOUS_END_TIME _ _ <<< "$PREVIOUS_RESULT"
+if [[ "$PREVIOUS_INDEXER_STATUS" == "error" ]]; then
+  echo "The indexer is already in an error state and requires intervention."
+  exit 1
+fi
+
+retry curl --fail-with-body -sS -o /dev/null -X POST "$INDEXER_RUN_URL" \
   -H "api-key: ${SEARCH_ADMIN_KEY}" \
   -H "Content-Length: 0"
-echo "✓ Indexer triggered — documents will be indexed shortly"
+echo "✓ Indexer run accepted"
 
 # ─── 6. Check status ───────────────────────────────────────────────────
 echo ""
-echo "=== Checking indexer status ==="
-sleep 5
-STATUS=$(curl --fail-with-body -sS "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}/status?api-version=${SEARCH_API_VERSION}" \
-  -H "api-key: ${SEARCH_ADMIN_KEY}")
-echo "$STATUS" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-hist = d.get('lastResult') or {}
-print(f\"Status: {hist.get('status', 'unknown')}\")
-print(f\"Items processed: {hist.get('itemsProcessed', 0)}\")
-print(f\"Items failed: {hist.get('itemsFailed', 0)}\")
-"
+echo "=== Waiting for indexer completion ==="
+INDEXER_DEADLINE=$((SECONDS + INDEXER_TIMEOUT_SECONDS))
+while true; do
+  CURRENT_RESULT="$(get_indexer_status | parse_indexer_result)"
+  IFS='|' read -r CURRENT_INDEXER_STATUS CURRENT_RESULT_STATUS CURRENT_START_TIME CURRENT_END_TIME ITEMS_PROCESSED ITEMS_FAILED <<< "$CURRENT_RESULT"
+
+  if [[ "$CURRENT_INDEXER_STATUS" == "error" ]]; then
+    echo "The indexer entered an error state that requires intervention."
+    exit 1
+  fi
+
+  if [[ "$CURRENT_START_TIME" != "$PREVIOUS_START_TIME" || "$CURRENT_END_TIME" != "$PREVIOUS_END_TIME" ]]; then
+    case "$CURRENT_RESULT_STATUS" in
+      success)
+        if (( ITEMS_FAILED > 0 )); then
+          echo "Indexer completed with ${ITEMS_FAILED} failed item(s) after processing ${ITEMS_PROCESSED} item(s)."
+          exit 1
+        fi
+        echo "Indexer succeeded: processed ${ITEMS_PROCESSED} item(s), failed ${ITEMS_FAILED}."
+        break
+        ;;
+      transientFailure|reset)
+        echo "Indexer completed with status '${CURRENT_RESULT_STATUS}' after processing ${ITEMS_PROCESSED} item(s); ${ITEMS_FAILED} item(s) failed."
+        exit 1
+        ;;
+    esac
+  fi
+
+  if (( SECONDS >= INDEXER_DEADLINE )); then
+    echo "Indexer did not complete successfully within ${INDEXER_TIMEOUT_SECONDS} seconds."
+    echo "Last observed result: ${CURRENT_RESULT_STATUS:-unknown}; overall status: ${CURRENT_INDEXER_STATUS:-unknown}; processed ${ITEMS_PROCESSED:-0}; failed ${ITEMS_FAILED:-0}."
+    exit 1
+  fi
+
+  sleep "$INDEXER_POLL_INTERVAL_SECONDS"
+done
 
 # ─── 7. Create knowledge source ────────────────────────────────────────
 echo ""
