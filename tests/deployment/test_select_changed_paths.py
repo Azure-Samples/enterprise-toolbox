@@ -40,7 +40,7 @@ class SelectChangedPathsTests(unittest.TestCase):
                 self.assertTrue(selected["configuration"])
 
     def test_test_changes_select_every_validation_group(self) -> None:
-        selected = select_groups(["tests/deployment/test_workflow_contracts.py"])
+        selected = select_groups(["tests/deployment/test_load_foundation_context.py"])
         self.assertTrue(selected["workflows"])
         self.assertTrue(selected["foundation"])
         self.assertTrue(selected["agent"])

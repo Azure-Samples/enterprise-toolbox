@@ -73,7 +73,8 @@ Multi-line shell logic lives in [`.github/scripts/`](../.github/scripts/)
 actions pass inputs as environment variables and call them with
 `bash "$GITHUB_WORKSPACE/.github/scripts/<name>.sh"`; one-line commands such as
 `azd deploy fibey-agent` stay inline. The scripts are ShellCheck-linted in PR
-validation and covered by `tests/deployment/test_deployment_scripts.py`.
+validation; focused offline tests cover toolbox promotion and sensitive-output
+handling.
 
 Configure these GitHub Environment secrets in both environments:
 

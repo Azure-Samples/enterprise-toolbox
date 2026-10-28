@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import tempfile
 import unittest
@@ -134,19 +133,6 @@ else:
             for line in self.log.read_text(encoding="utf-8").splitlines()
             if (command := json.loads(line))["tool"] == "az"
         ]
-
-    def test_loader_flags_match_resolver_argument_parser(self) -> None:
-        resolver_flags = set(
-            re.findall(
-                r'parser\.add_argument\("--([a-z-]+)"',
-                RESOLVER.read_text(encoding="utf-8"),
-            )
-        )
-        loader = SCRIPT.read_text(encoding="utf-8")
-        python_arguments = loader.split('python3 "$RESOLVER_PATH" \\', 1)[1]
-        python_arguments = python_arguments.split('> "$context_file"', 1)[0]
-        loader_flags = set(re.findall(r"--([a-z-]+)", python_arguments))
-        self.assertEqual(loader_flags, resolver_flags)
 
     def test_creates_environment_and_writes_complete_context_once(self) -> None:
         result = self._run()

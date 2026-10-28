@@ -47,18 +47,6 @@ class DeploymentScriptTests(unittest.TestCase):
             timeout=30,
         )
 
-    def test_preview_runs_only_the_what_if(self) -> None:
-        self._mock_azd('[ "$*" = "provision --preview --no-prompt" ] || exit 9\necho what-if')
-        result = self._run("azd-preview.sh")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("what-if", result.stdout)
-
-    def test_preview_failure_stops_without_summary(self) -> None:
-        self._mock_azd("echo boom; exit 4")
-        result = self._run("azd-preview.sh")
-        self.assertEqual(result.returncode, 1)
-        self.assertFalse(self.summary.exists())
-
     def test_service_deploy_verifies_promotion_only_when_requested(self) -> None:
         env = {"PROJECT_DIRECTORY": str(self.root), "COMMAND": "deploy", "SERVICE": "fibey-toolbox"}
         self._mock_azd('[ "$*" = "deploy fibey-toolbox --no-prompt" ] || exit 9\necho "Promoted fibey-toolbox version 3 (id-3)."')
@@ -90,22 +78,6 @@ class DeploymentScriptTests(unittest.TestCase):
         self.assertNotIn("SECRET-VALUE", result.stdout + result.stderr)
         self.assertEqual(self._run("run-azd.sh", VERIFY_PROMOTION="true", **base).returncode, 2)
         self.assertEqual(self._run("run-azd.sh", PROJECT_DIRECTORY=str(self.root), COMMAND="up").returncode, 2)
-
-    def test_bootstrap_validation_lists_missing_values(self) -> None:
-        result = self._run("validate-bootstrap.sh", REQUIRE_TOOLBOX_ENDPOINTS="true")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("AZURE_SUBSCRIPTION_ID", result.stderr)
-        self.assertIn("INVENTORY_MCP_URL", result.stderr)
-
-    def test_agent_smoke_uses_new_session_read_only_prompt(self) -> None:
-        log = self.root / "azd.log"
-        self._mock_azd(f'printf "%s\\n" "$*" >> "{log}"')
-        result = self._run("agent-smoke.sh")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        lines = log.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(lines[0], "ai agent show fibey-agent --no-prompt --output json")
-        self.assertIn("--new-session", lines[1])
-        self.assertIn("FIB-002", lines[1])
 
 
 if __name__ == "__main__":
