@@ -9,10 +9,16 @@ context_file="$(mktemp)"
 settings_file="$(mktemp)"
 trap 'rm -f "$deployment_file" "$context_file" "$settings_file"' EXIT
 
-az deployment sub show \
-  --name "$DEPLOYMENT_NAME" \
-  --subscription "$AZURE_SUBSCRIPTION_ID" \
-  --output json > "$deployment_file"
+if [ -n "$DEPLOYMENT_NAME" ]; then
+  az deployment sub show \
+    --name "$DEPLOYMENT_NAME" \
+    --subscription "$AZURE_SUBSCRIPTION_ID" \
+    --output json > "$deployment_file"
+else
+  az deployment sub list \
+    --subscription "$AZURE_SUBSCRIPTION_ID" \
+    --output json > "$deployment_file"
+fi
 python3 "$RESOLVER_PATH" \
   --input "$deployment_file" \
   --subscription-id "$AZURE_SUBSCRIPTION_ID" \
@@ -48,6 +54,6 @@ azd env set "${settings[@]}" \
 
 {
   echo
-  echo "Validated ARM deployment \`$DEPLOYMENT_NAME\` and initialized a fresh azd environment."
+  echo "Validated ARM deployment context and initialized a fresh azd environment."
   echo "No deployment outputs or secret values are included in this summary."
 } >> "$GITHUB_STEP_SUMMARY"

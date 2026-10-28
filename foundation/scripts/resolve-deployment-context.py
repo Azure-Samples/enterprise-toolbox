@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +122,110 @@ def _deployment_subscription(deployment: dict[str, Any]) -> str:
     if not match:
         raise ContextError("Selected deployment ARM ID has no subscription.")
     return match.group(1)
+
+
+def _output_matches(outputs: dict[str, Any], aliases: tuple[str, ...], expected: str) -> bool:
+    aliases_lower = {alias.lower() for alias in aliases}
+    values: set[str] = set()
+    for key, entry in outputs.items():
+        if key.lower() not in aliases_lower:
+            continue
+        if not isinstance(entry, dict) or not isinstance(entry.get("value"), str):
+            return False
+        value = entry["value"].strip()
+        if not value or any(character in value for character in ("\x00", "\r", "\n", "\t")):
+            return False
+        values.add(value.casefold())
+    return values == {expected.casefold()}
+
+
+def select_latest_matching_deployment(
+    deployments: Any,
+    *,
+    subscription_id: str,
+    tenant_id: str,
+    resource_group: str,
+    account_name: str,
+    project_name: str,
+) -> dict[str, Any]:
+    if not isinstance(deployments, list):
+        raise ContextError("ARM deployment discovery did not return a JSON array.")
+
+    matches: list[tuple[datetime, dict[str, Any]]] = []
+    for deployment in deployments:
+        if not isinstance(deployment, dict):
+            continue
+        properties = deployment.get("properties")
+        deployment_name = deployment.get("name")
+        deployment_id = deployment.get("id")
+        if (
+            not isinstance(properties, dict)
+            or not isinstance(properties.get("provisioningState"), str)
+            or properties["provisioningState"].casefold() != "succeeded"
+            or not isinstance(deployment_name, str)
+            or not isinstance(deployment_id, str)
+            or deployment_id.rstrip("/").rsplit("/", 1)[-1].casefold()
+            != deployment_name.casefold()
+        ):
+            continue
+        try:
+            actual_subscription = _deployment_subscription(deployment)
+        except ContextError:
+            continue
+        if actual_subscription.casefold() != subscription_id.casefold():
+            continue
+
+        outputs = properties.get("outputs")
+        if not isinstance(outputs, dict) or not all(
+            _output_matches(outputs, ALIASES[key], expected)
+            for key, expected in (
+                ("tenant_id", tenant_id),
+                ("resource_group", resource_group),
+                ("account_name", account_name),
+                ("project_name", project_name),
+            )
+        ):
+            continue
+
+        timestamp = properties.get("timestamp")
+        if not isinstance(timestamp, str):
+            raise ContextError(
+                f"Matching ARM deployment {deployment_name!r} has no timestamp; "
+                "specify its name explicitly."
+            )
+        try:
+            deployment_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise ContextError(
+                f"Matching ARM deployment {deployment_name!r} has an invalid timestamp; "
+                "specify its name explicitly."
+            ) from error
+        if deployment_time.tzinfo is None:
+            raise ContextError(
+                f"Matching ARM deployment {deployment_name!r} has no timezone in its "
+                "timestamp; specify its name explicitly."
+            )
+        matches.append((deployment_time, deployment))
+
+    if not matches:
+        raise ContextError(
+            "No successful subscription-scope ARM deployment matched the configured "
+            "subscription, tenant, resource group, Foundry account, and project. "
+            "Specify a deployment name explicitly or provision the foundation first."
+        )
+
+    latest_time = max(deployment_time for deployment_time, _ in matches)
+    latest = [
+        deployment for deployment_time, deployment in matches
+        if deployment_time == latest_time
+    ]
+    if len(latest) != 1:
+        names = ", ".join(sorted(deployment["name"] for deployment in latest))
+        raise ContextError(
+            f"Multiple matching ARM deployments share the latest timestamp ({names}); "
+            "specify a deployment name explicitly."
+        )
+    return latest[0]
 
 
 def _resource_names(resource_id: str) -> tuple[str | None, str | None]:
@@ -309,7 +414,7 @@ def main() -> int:
     parser.add_argument("--resource-group", required=True)
     parser.add_argument("--account-name", required=True)
     parser.add_argument("--project-name", required=True)
-    parser.add_argument("--deployment-name", required=True)
+    parser.add_argument("--deployment-name", default="")
     parser.add_argument("--kb-name", default="fibey-field-ops-kb")
     parser.add_argument("--location", required=True)
     parser.add_argument("--search-location", required=True)
@@ -321,10 +426,22 @@ def main() -> int:
     parser.add_argument("--work-orders-api-url", default="")
     args = parser.parse_args()
     try:
-        deployment = json.loads(
+        deployment_data = json.loads(
             Path(args.input).read_text(encoding="utf-8"),
             object_pairs_hook=_unique_object,
         )
+        deployment_name = args.deployment_name
+        if not deployment_name:
+            deployment_data = select_latest_matching_deployment(
+                deployment_data,
+                subscription_id=args.subscription_id,
+                tenant_id=args.tenant_id,
+                resource_group=args.resource_group,
+                account_name=args.account_name,
+                project_name=args.project_name,
+            )
+            deployment_name = deployment_data["name"]
+        deployment = deployment_data
         context = resolve_context(
             deployment,
             subscription_id=args.subscription_id,
@@ -333,7 +450,7 @@ def main() -> int:
             account_name=args.account_name,
             project_name=args.project_name,
             kb_name=args.kb_name,
-            deployment_name=args.deployment_name,
+            deployment_name=deployment_name,
             location=args.location,
             search_location=args.search_location,
             model_version=args.model_version,

@@ -53,7 +53,11 @@ work-order creation or updates.
 The foundation workflow uses the protected GitHub Environment
 `fibey-foundation`; the hosted-agent workflow uses `fibey-agent`. Each creates
 its own ephemeral azd environment named `fibey-jf-1026` from its environment
-variables and a deliberately selected successful ARM deployment. Neither
+variables and a successful ARM deployment. The deployment name is optional:
+when omitted, the context loader discovers the newest successful deployment
+matching the configured subscription, tenant, resource group, Foundry account,
+and project. If multiple matches have the same timestamp, the workflow asks
+for an explicit name. Neither
 consumes local `.azure` state or artifacts from an earlier workflow.
 
 Each job checks out source, then calls the shared
@@ -69,7 +73,8 @@ Multi-line shell logic lives in [`.github/scripts/`](../.github/scripts/)
 actions pass inputs as environment variables and call them with
 `bash "$GITHUB_WORKSPACE/.github/scripts/<name>.sh"`; one-line commands such as
 `azd deploy fibey-agent` stay inline. The scripts are ShellCheck-linted in PR
-validation and covered by `tests/deployment/test_deployment_scripts.py`.
+validation; focused offline tests cover toolbox promotion and sensitive-output
+handling.
 
 Configure these GitHub Environment secrets in both environments:
 
@@ -93,10 +98,12 @@ The foundation environment additionally needs `INVENTORY_MCP_URL`,
 foundation deployment identity's **object ID**, not its client ID;
 `AZURE_PRINCIPAL_TYPE` is optional and defaults to `ServicePrincipal`.
 Foundation preview and provisioning use these values to model the Bicep role
-assignments. Both deployment workflows also require the name of an explicitly
-selected successful subscription-scope ARM deployment as a dispatch input.
-The resolver validates its subscription, resource group, account, and project
-before initializing azd state.
+assignments. Both deployment workflows accept an optional successful
+subscription-scope ARM deployment name. If none is provided, the latest
+matching deployment is selected automatically. At least one successful
+matching deployment must already exist; an empty subscription needs a separate
+bootstrap path. The resolver validates the selected deployment's subscription,
+resource group, account, and project before initializing azd state.
 
 Configure one environment-subject federated credential for each deployment
 identity:

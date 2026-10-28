@@ -12,9 +12,10 @@ on:
           - provision-and-toolbox
         default: preview
       arm_deployment_name:
-        description: Explicit successful subscription-scope ARM deployment to use for context
-        required: true
+        description: Optional ARM deployment name; defaults to the latest successful matching deployment
+        required: false
         type: string
+        default: ""
 
 permissions:
   contents: read

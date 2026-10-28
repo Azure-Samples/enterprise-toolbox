@@ -4,6 +4,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 from typing import Any
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +25,7 @@ def arm_deployment(
     resource_group: str = "rg-fibey-jf-1026",
     name: str = "selected-deployment",
     state: str = "Succeeded",
+    timestamp: str = "2026-10-28T10:00:00Z",
 ) -> dict[str, Any]:
     account_id = (
         f"/subscriptions/{subscription}/resourceGroups/{resource_group}"
@@ -66,7 +68,11 @@ def arm_deployment(
             f"deployments/{name}"
         ),
         "name": name,
-        "properties": {"provisioningState": state, "outputs": outputs},
+        "properties": {
+            "provisioningState": state,
+            "timestamp": timestamp,
+            "outputs": outputs,
+        },
     }
 
 
@@ -138,6 +144,61 @@ class ResolveDeploymentContextTests(unittest.TestCase):
             resolve(arm_deployment(state="Failed"))
         with self.assertRaisesRegex(resolver.ContextError, "different deployment"):
             resolve(arm_deployment(), deployment_name="another-deployment")
+
+    def test_selects_latest_matching_successful_deployment(self) -> None:
+        older = arm_deployment(
+            name="older",
+            timestamp="2026-10-27T10:00:00Z",
+        )
+        newest = arm_deployment(
+            name="newest",
+            timestamp="2026-10-28T10:00:00Z",
+        )
+        unrelated = arm_deployment(
+            name="other-resource-group",
+            resource_group="rg-other",
+            timestamp="2026-10-29T10:00:00Z",
+        )
+        failed = arm_deployment(
+            name="failed-latest",
+            state="Failed",
+            timestamp="2026-10-30T10:00:00Z",
+        )
+        selected = resolver.select_latest_matching_deployment(
+            [older, unrelated, failed, newest],
+            subscription_id="sub-123",
+            tenant_id="tenant-123",
+            resource_group="rg-fibey-jf-1026",
+            account_name="ai-account-sidzt6mr5x5qu",
+            project_name="fibey-project",
+        )
+        self.assertEqual(selected["name"], "newest")
+
+    def test_auto_selection_rejects_no_matching_deployment(self) -> None:
+        with self.assertRaisesRegex(resolver.ContextError, "No successful"):
+            resolver.select_latest_matching_deployment(
+                [arm_deployment(resource_group="rg-other")],
+                subscription_id="sub-123",
+                tenant_id="tenant-123",
+                resource_group="rg-fibey-jf-1026",
+                account_name="ai-account-sidzt6mr5x5qu",
+                project_name="fibey-project",
+            )
+
+    def test_auto_selection_rejects_ambiguous_latest_deployments(self) -> None:
+        deployments = [
+            arm_deployment(name="candidate-a"),
+            arm_deployment(name="candidate-b"),
+        ]
+        with self.assertRaisesRegex(resolver.ContextError, "specify a deployment name"):
+            resolver.select_latest_matching_deployment(
+                deployments,
+                subscription_id="sub-123",
+                tenant_id="tenant-123",
+                resource_group="rg-fibey-jf-1026",
+                account_name="ai-account-sidzt6mr5x5qu",
+                project_name="fibey-project",
+            )
 
     def test_rejects_bootstrap_identity_mismatch(self) -> None:
         with self.assertRaisesRegex(resolver.ContextError, "Foundry account"):
