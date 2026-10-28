@@ -11,17 +11,17 @@ on:
           - preflight
           - deploy
         default: preflight
-      arm_deployment_name:
-        description: Optional ARM deployment name; defaults to the latest successful matching deployment
+      parameter_file:
+        description: Checked-in agent parameter file containing explicit endpoints and project ID
         required: false
         type: string
-        default: ""
+        default: agent/parameters.json
 
 permissions:
   contents: read
 
 concurrency:
-  group: fibey-jf-1026-azure-mutation
+  group: fibey-azure-mutation
   cancel-in-progress: false
 
 jobs:
@@ -46,22 +46,14 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           extension-name: azure.ai.agents
           extension-version: 1.0.0-beta.22
-      - name: Load selected foundation context
-        uses: ./.github/actions/load-foundation-context
+      - name: Initialize agent from parameters
+        uses: ./.github/actions/initialize-deployment
         with:
           project-directory: agent
-          environment-name: fibey-jf-1026
-          resolver-path: foundation/scripts/resolve-deployment-context.py
-          deployment-name: ${{ inputs.arm_deployment_name }}
+          parameter-file: ${{ inputs.parameter_file }}
+          operation: agent
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
-          account-name: ${{ vars.AZURE_AI_ACCOUNT_NAME }}
-          project-name: ${{ vars.AZURE_AI_PROJECT_NAME }}
-          primary-region: ${{ vars.AZURE_PRIMARY_LOCATION }}
-          search-region: ${{ vars.AZURE_SEARCH_LOCATION }}
-          model-version: ${{ vars.FOUNDRY_MODEL_VERSION }}
-          model-capacity: ${{ vars.FOUNDRY_MODEL_CAPACITY }}
 
   deploy:
     name: Deploy only the hosted agent
@@ -84,22 +76,14 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           extension-name: azure.ai.agents
           extension-version: 1.0.0-beta.22
-      - name: Load selected foundation context
-        uses: ./.github/actions/load-foundation-context
+      - name: Initialize agent from parameters
+        uses: ./.github/actions/initialize-deployment
         with:
           project-directory: agent
-          environment-name: fibey-jf-1026
-          resolver-path: foundation/scripts/resolve-deployment-context.py
-          deployment-name: ${{ inputs.arm_deployment_name }}
+          parameter-file: ${{ inputs.parameter_file }}
+          operation: agent
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
-          account-name: ${{ vars.AZURE_AI_ACCOUNT_NAME }}
-          project-name: ${{ vars.AZURE_AI_PROJECT_NAME }}
-          primary-region: ${{ vars.AZURE_PRIMARY_LOCATION }}
-          search-region: ${{ vars.AZURE_SEARCH_LOCATION }}
-          model-version: ${{ vars.FOUNDRY_MODEL_VERSION }}
-          model-capacity: ${{ vars.FOUNDRY_MODEL_CAPACITY }}
       - name: Deploy the hosted-agent service only
         uses: ./.github/actions/run-azd
         with:

@@ -46,6 +46,14 @@ class SelectChangedPathsTests(unittest.TestCase):
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["configuration"])
 
+    def test_parameter_changes_select_only_the_owning_lifecycle(self) -> None:
+        for lifecycle in ("foundation", "agent"):
+            with self.subTest(lifecycle=lifecycle):
+                selected = select_groups([f"{lifecycle}/parameters.json"])
+                self.assertTrue(selected[lifecycle])
+                self.assertFalse(selected["agent" if lifecycle == "foundation" else "foundation"])
+                self.assertTrue(selected["configuration"])
+
     def test_unrelated_changes_still_produce_a_stable_successful_check(self) -> None:
         selected = select_groups(["ui/src/App.tsx", "docs/deployment.md"])
         self.assertFalse(any(selected.values()))

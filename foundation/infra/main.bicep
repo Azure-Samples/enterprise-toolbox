@@ -60,6 +60,9 @@ param enableMonitoring bool = true
 @description('Model deployment name used by the agent and gateway.')
 param foundryModel string = 'gpt-4.1-mini'
 
+@description('Version of the Foundry model to deploy.')
+param foundryModelVersion string = '2025-04-14'
+
 @description('Capacity (TPM, in thousands) for the Foundry model deployment.')
 param foundryModelCapacity int = 100
 
@@ -108,6 +111,7 @@ module resources 'resources.bicep' = {
     enableCapabilityHost: enableCapabilityHost
     enableMonitoring: enableMonitoring
     foundryModel: foundryModel
+    foundryModelVersion: foundryModelVersion
     foundryModelCapacity: foundryModelCapacity
     toolboxName: toolboxName
     knowledgeBaseName: knowledgeBaseName
