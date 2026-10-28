@@ -87,6 +87,11 @@ class WorkflowContractTests(unittest.TestCase):
                 document = workflow(name)
                 self.assertIn("workflow_dispatch", document["on"])
                 self.assertNotIn("pull_request", document)
+                arm_deployment_input = document["on"]["workflow_dispatch"]["inputs"][
+                    "arm_deployment_name"
+                ]
+                self.assertEqual(arm_deployment_input["required"], "false")
+                self.assertEqual(arm_deployment_input["default"], "")
                 self.assertEqual(
                     document["concurrency"],
                     {
@@ -258,6 +263,16 @@ class WorkflowContractTests(unittest.TestCase):
                         if definition.get("required") == "true"
                     }
                     self.assertLessEqual(required, set(provided))
+                    self.assertLessEqual(set(provided), set(inputs))
+
+                    action_text = action_path.read_text(encoding="utf-8")
+                    referenced = {
+                        match.group(1)
+                        for match in re.finditer(
+                            r"\$\{\{\s*inputs\.([\w-]+)", action_text
+                        )
+                    }
+                    self.assertEqual(referenced, set(inputs))
 
     def test_foundation_role_assignment_uses_service_principal_type(self) -> None:
         foundation = workflow("deploy-foundation.yml")

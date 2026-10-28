@@ -11,8 +11,9 @@ inputs:
     description: Path to the deployment context resolver
     required: true
   deployment-name:
-    description: Explicitly selected successful subscription-scope ARM deployment
-    required: true
+    description: Optional successful subscription-scope ARM deployment; defaults to the latest matching deployment
+    required: false
+    default: ""
   subscription-id:
     description: Expected Azure subscription ID
     required: true

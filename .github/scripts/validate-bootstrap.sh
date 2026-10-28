@@ -28,7 +28,7 @@ fi
   echo "Foundation toolbox deploys also require GitHub Environment variables \`INVENTORY_MCP_URL\` and \`WORK_ORDERS_API_URL\`."
   echo "Foundation preview and provision preflight require \`AZURE_PRINCIPAL_ID\` and optionally \`AZURE_PRINCIPAL_TYPE\` to model Bicep role assignments."
   echo "Approved anchors: primary region \`eastus2\`, Search region \`centralus\`, model \`gpt-4.1-mini\` version \`2025-04-14\` at capacity \`100\`."
-  echo "The selected ARM deployment must be successful and belong to this subscription/resource group/account/project."
+  echo "An explicitly selected ARM deployment must be successful and belong to this subscription/resource group/account/project. If no name is supplied, the latest matching successful deployment is discovered."
 } >> "$GITHUB_STEP_SUMMARY"
 if (( ${#missing[@]} )); then
   printf 'Missing required GitHub Environment bootstrap value(s): %s\n' \

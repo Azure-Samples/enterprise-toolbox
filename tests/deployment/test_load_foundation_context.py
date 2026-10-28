@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -51,7 +52,10 @@ arguments = sys.argv[1:]
 with Path(os.environ["COMMAND_LOG"]).open("a", encoding="utf-8") as log:
     log.write(json.dumps({"tool": tool, "arguments": arguments}) + chr(10))
 if tool == "az":
-    if arguments[:3] != ["deployment", "sub", "show"]:
+    if arguments[:3] not in (
+        ["deployment", "sub", "show"],
+        ["deployment", "sub", "list"],
+    ):
         print(f"Unexpected az command: {arguments}", file=sys.stderr)
         raise SystemExit(2)
     print(Path(os.environ["DEPLOYMENT_FIXTURE"]).read_text(encoding="utf-8"))
@@ -71,8 +75,14 @@ else:
         path.write_text(f"#!/usr/bin/env python3\n{source}", encoding="utf-8")
         path.chmod(0o755)
 
-    def _run(self, fail_operation: str = "") -> subprocess.CompletedProcess[str]:
-        self.fixture.write_text(json.dumps(self.deployment), encoding="utf-8")
+    def _run(
+        self,
+        fail_operation: str = "",
+        deployment_name: str = "selected-deployment",
+        deployment_data: object | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        fixture = self.deployment if deployment_data is None else deployment_data
+        self.fixture.write_text(json.dumps(fixture), encoding="utf-8")
         environment = os.environ.copy()
         environment.update(
             {
@@ -83,7 +93,7 @@ else:
                 "GITHUB_STEP_SUMMARY": str(self.summary),
                 "PROJECT_DIRECTORY": "foundation",
                 "RESOLVER_PATH": str(RESOLVER),
-                "DEPLOYMENT_NAME": "selected-deployment",
+                "DEPLOYMENT_NAME": deployment_name,
                 "AZURE_ENVIRONMENT_NAME": "fibey-jf-1026",
                 "AZURE_SUBSCRIPTION_ID": "sub-123",
                 "AZURE_TENANT_ID": "tenant-123",
@@ -118,9 +128,36 @@ else:
             if (command := json.loads(line))["tool"] == "azd"
         ]
 
+    def _az_commands(self) -> list[list[str]]:
+        return [
+            command["arguments"]
+            for line in self.log.read_text(encoding="utf-8").splitlines()
+            if (command := json.loads(line))["tool"] == "az"
+        ]
+
+    def test_loader_flags_match_resolver_argument_parser(self) -> None:
+        resolver_flags = set(
+            re.findall(
+                r'parser\.add_argument\("--([a-z-]+)"',
+                RESOLVER.read_text(encoding="utf-8"),
+            )
+        )
+        loader = SCRIPT.read_text(encoding="utf-8")
+        python_arguments = loader.split('python3 "$RESOLVER_PATH" \\', 1)[1]
+        python_arguments = python_arguments.split('> "$context_file"', 1)[0]
+        loader_flags = set(re.findall(r"--([a-z-]+)", python_arguments))
+        self.assertEqual(loader_flags, resolver_flags)
+
     def test_creates_environment_and_writes_complete_context_once(self) -> None:
         result = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self._az_commands(),
+            [[
+                "deployment", "sub", "show", "--name", "selected-deployment",
+                "--subscription", "sub-123", "--output", "json",
+            ]],
+        )
         commands = self._azd_commands()
         self.assertEqual(len(commands), 2)
         self.assertEqual(
@@ -151,6 +188,59 @@ else:
         )
         self.assertNotIn(self.inventory_url, result.stdout + result.stderr)
         self.assertNotIn(self.inventory_url, self.summary.read_text(encoding="utf-8"))
+
+    def test_discovers_latest_matching_deployment_when_name_is_omitted(self) -> None:
+        older = arm_deployment(
+            name="older",
+            timestamp="2026-10-27T10:00:00Z",
+        )
+        latest = arm_deployment(
+            name="latest",
+            timestamp="2026-10-28T10:00:00Z",
+        )
+        unrelated = arm_deployment(
+            name="unrelated",
+            resource_group="rg-other",
+            timestamp="2026-10-29T10:00:00Z",
+        )
+        result = self._run(
+            deployment_name="",
+            deployment_data=[older, unrelated, latest],
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self._az_commands(),
+            [[
+                "deployment", "sub", "list", "--subscription", "sub-123",
+                "--output", "json",
+            ]],
+        )
+        commands = self._azd_commands()
+        assignments = commands[1][2:-4]
+        actual = dict(assignment.split("=", 1) for assignment in assignments)
+        self.assertEqual(
+            actual,
+            resolve(
+                latest,
+                deployment_name="latest",
+                inventory_mcp_url=self.inventory_url,
+                work_orders_api_url=self.work_orders_url,
+                principal_id="principal-123",
+                principal_type="ServicePrincipal",
+            ),
+        )
+
+    def test_discovery_fails_clearly_when_no_prior_deployment_matches(self) -> None:
+        result = self._run(
+            deployment_name="",
+            deployment_data=[
+                arm_deployment(resource_group="rg-other"),
+            ],
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No successful subscription-scope ARM deployment matched", result.stderr)
+        self.assertEqual(self._azd_commands(), [])
+        self.assertFalse(self.summary.exists())
 
     def test_stops_if_environment_creation_fails(self) -> None:
         result = self._run(fail_operation="new")
