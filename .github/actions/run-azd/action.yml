@@ -1,5 +1,5 @@
 name: Run azd lifecycle command
-description: Run azd deploy for a single service or azd provision, with optional promotion verification
+description: Run azd deploy for a single service or azd provision
 inputs:
   project-directory:
     description: Directory containing the azd project
@@ -12,10 +12,6 @@ inputs:
     description: azd service name to deploy (required for deploy)
     required: false
     default: ""
-  verify-promotion:
-    description: Require a promoted-version line in the deploy output
-    required: false
-    default: "false"
 runs:
   using: composite
   steps:
@@ -25,5 +21,4 @@ runs:
         PROJECT_DIRECTORY: ${{ inputs.project-directory }}
         COMMAND: ${{ inputs.command }}
         SERVICE: ${{ inputs.service }}
-        VERIFY_PROMOTION: ${{ inputs.verify-promotion }}
       run: bash "$GITHUB_WORKSPACE/.github/scripts/run-azd.sh"

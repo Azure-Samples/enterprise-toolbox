@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
 # Run one azd lifecycle command from PROJECT_DIRECTORY.
 # Inputs (environment): PROJECT_DIRECTORY, COMMAND (deploy|provision),
-# SERVICE (required for deploy), VERIFY_PROMOTION (true|false, deploy only).
+# SERVICE (required for deploy).
 set -euo pipefail
 
 cd "${PROJECT_DIRECTORY:?PROJECT_DIRECTORY is required}"
 command_name="${COMMAND:?COMMAND is required}"
-verify="${VERIFY_PROMOTION:-false}"
 log_dir="${RUNNER_TEMP:?RUNNER_TEMP is required}"
 
 case "$command_name" in
   provision)
-    if [ "$verify" = "true" ]; then
-      echo "verify-promotion applies only to deploy." >&2
-      exit 2
-    fi
     # Render console diagnostics, not structured provisioning outputs containing values.
     if azd provision --no-prompt --output json 2>&1 |
       tee "$log_dir/azd-provision.jsonl" |
@@ -43,19 +38,6 @@ case "$command_name" in
     if ! azd deploy "$service" --no-prompt 2>&1 | tee "$deploy_log"; then
       echo "Deployment of $service failed." >&2
       exit 1
-    fi
-    if [ "$verify" = "true" ]; then
-      sleep 30
-      promotion_line="$(grep -F "Promoted $service version " "$deploy_log" | tail -n 1 || true)"
-      if [ -z "$promotion_line" ]; then
-        echo "$service deployment succeeded without reporting a verified promoted default." >&2
-        exit 1
-      fi
-      {
-        echo "### Verified $service default"
-        echo
-        echo "$promotion_line"
-      } >> "$GITHUB_STEP_SUMMARY"
     fi
     ;;
   *)

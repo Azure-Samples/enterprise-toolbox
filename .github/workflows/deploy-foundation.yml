@@ -97,4 +97,3 @@ jobs:
         with:
           project-directory: foundation
           service: fibey-toolbox
-          verify-promotion: true

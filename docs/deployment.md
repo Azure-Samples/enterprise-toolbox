@@ -136,9 +136,8 @@ Generated state under `foundation/.azure/` and
 cleanup step. Local azd state remains on your machine.
 
 Workflow shell logic lives in [`.github/scripts/`](../.github/scripts/)
-(parameter loading, preview, `azd deploy`/`azd provision`
-via the shared `run-azd` action with optional promotion check, and agent smoke
-test). The manually invoked services prerequisite is
+(parameter loading, preview, `azd deploy`/`azd provision` through the shared
+`run-azd` action, and agent smoke testing). The manually invoked services prerequisite is
 [`scripts/deploy-prerequisites.sh`](../scripts/deploy-prerequisites.sh).
 Workflows and
 actions pass inputs as environment variables and call them with
@@ -151,8 +150,9 @@ including ARM errors and postprovision hook failures, into the Actions log.
 Structured provisioning output values are not printed. The raw JSON stream is
 kept only in the runner's temporary directory and is not uploaded as an artifact.
 An azd failure or a diagnostic-decoding failure fails the step explicitly.
-When promotion verification is enabled, the deploy wrapper waits 10 seconds
-before checking for the promoted-version confirmation.
+Toolbox deployment does not require a separate promoted-version confirmation
+in the wrapper; promotion remains handled by the configured toolbox lifecycle
+hook.
 
 Configure these GitHub Environment secrets in both environments:
 

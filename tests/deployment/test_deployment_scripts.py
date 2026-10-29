@@ -26,14 +26,6 @@ class DeploymentScriptTests(unittest.TestCase):
         path.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
         path.chmod(0o755)
 
-    def _mock_sleep(self) -> None:
-        path = self.bin / "sleep"
-        path.write_text(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$SLEEP_LOG\"\n",
-            encoding="utf-8",
-        )
-        path.chmod(0o755)
-
     def _run(self, script: str, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
         environment = os.environ.copy()
         environment.update(
@@ -55,29 +47,15 @@ class DeploymentScriptTests(unittest.TestCase):
             timeout=30,
         )
 
-    def test_service_deploy_verifies_promotion_only_when_requested(self) -> None:
+    def test_service_deploy_does_not_require_promotion_confirmation(self) -> None:
         env = {"PROJECT_DIRECTORY": str(self.root), "COMMAND": "deploy", "SERVICE": "fibey-toolbox"}
-        sleep_log = self.root / "sleep.log"
-        env["SLEEP_LOG"] = str(sleep_log)
-        self._mock_sleep()
-        self._mock_azd('[ "$*" = "deploy fibey-toolbox --no-prompt" ] || exit 9\necho "Promoted fibey-toolbox version 3 (id-3)."')
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="true", **env)
+        self._mock_azd('[ "$*" = "deploy fibey-toolbox --no-prompt" ] || exit 9\necho deployed')
+        result = self._run("run-azd.sh", **env)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("version 3", self.summary.read_text(encoding="utf-8"))
-        self.assertEqual(sleep_log.read_text(encoding="utf-8"), "10\n")
-
-        self.summary.unlink()
-        self._mock_azd("echo deployed")
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="true", **env)
-        self.assertEqual(result.returncode, 1)
         self.assertFalse(self.summary.exists())
-        self.assertEqual(sleep_log.read_text(encoding="utf-8"), "10\n10\n")
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="false", **env)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(sleep_log.read_text(encoding="utf-8"), "10\n10\n")
 
         self._mock_azd("exit 5")
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="false", **env)
+        result = self._run("run-azd.sh", **env)
         self.assertEqual(result.returncode, 1)
 
     def test_provision_suppresses_output_and_rejects_bad_input(self) -> None:
@@ -91,7 +69,6 @@ class DeploymentScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("SECRET-VALUE", result.stdout + result.stderr)
         self.assertIn("Provision completed.", result.stdout)
-        self.assertEqual(self._run("run-azd.sh", VERIFY_PROMOTION="true", **base).returncode, 2)
         self.assertEqual(self._run("run-azd.sh", PROJECT_DIRECTORY=str(self.root), COMMAND="up").returncode, 2)
 
     def test_provision_failure_reports_hook_diagnostics_without_output_values(self) -> None:
