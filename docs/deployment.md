@@ -146,6 +146,14 @@ actions pass inputs as environment variables and call them with
 validation; focused offline tests cover toolbox promotion and sensitive-output
 handling.
 
+Provisioning uses azd's JSON output mode and streams console diagnostics,
+including ARM errors and postprovision hook failures, into the Actions log.
+Structured provisioning output values are not printed. The raw JSON stream is
+kept only in the runner's temporary directory and is not uploaded as an artifact.
+An azd failure or a diagnostic-decoding failure fails the step explicitly.
+When promotion verification is enabled, the deploy wrapper waits 10 seconds
+before checking for the promoted-version confirmation.
+
 Configure these GitHub Environment secrets in both environments:
 
 - `AZURE_CLIENT_ID` — the client ID for that environment's separately scoped

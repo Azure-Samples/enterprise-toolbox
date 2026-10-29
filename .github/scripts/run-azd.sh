@@ -15,8 +15,25 @@ case "$command_name" in
       echo "verify-promotion applies only to deploy." >&2
       exit 2
     fi
-    if ! azd provision --no-prompt > "$log_dir/azd-provision.log" 2>&1; then
-      echo "Provision failed. Detailed deployment output was suppressed to avoid leaking values." >&2
+    # Render console diagnostics, not structured provisioning outputs containing values.
+    if azd provision --no-prompt --output json 2>&1 |
+      tee "$log_dir/azd-provision.jsonl" |
+      jq --unbuffered -r '
+        select(.type == "consoleMessage") | .data.message |
+        if type == "string" then . else error("Invalid azd console message") end
+      '; then
+      :
+    else
+      pipeline_status=("${PIPESTATUS[@]}")
+      if [ "${pipeline_status[2]}" -ne 0 ]; then
+        echo "Could not decode azd JSON diagnostics; raw output values were not printed." >&2
+      fi
+      if [ "${pipeline_status[1]}" -ne 0 ]; then
+        echo "Could not write the runner-local provisioning log." >&2
+      fi
+      if [ "${pipeline_status[0]}" -ne 0 ]; then
+        echo "Provision failed (azd exit code ${pipeline_status[0]}). See provisioning and hook diagnostics above." >&2
+      fi
       exit 1
     fi
     ;;
@@ -28,6 +45,7 @@ case "$command_name" in
       exit 1
     fi
     if [ "$verify" = "true" ]; then
+      sleep 30
       promotion_line="$(grep -F "Promoted $service version " "$deploy_log" | tail -n 1 || true)"
       if [ -z "$promotion_line" ]; then
         echo "$service deployment succeeded without reporting a verified promoted default." >&2
