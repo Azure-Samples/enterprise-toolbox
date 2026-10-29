@@ -23,6 +23,9 @@ jq -e \
     type == "string" and startswith("https://")
     and (test("[[:space:]#]") | not)
     and (try (capture("^https://(?<authority>[^/]+)").authority | contains("@") | not) catch false);
+  def parse_project_id:
+    try capture("^/subscriptions/(?<subscription>[^/]+)/resourceGroups/(?<resource_group>[^/]+)/providers/Microsoft[.]CognitiveServices/accounts/(?<account_name>[^/]+)/projects/(?<project_name>[^/]+)$")
+    catch null;
   . as $parameters |
   if type != "object" then error("parameter file must be a JSON object")
   elif (all(to_entries[]; (.key | test("^[A-Z][A-Z0-9_]*$")) and (.value | clean)) | not)
@@ -36,27 +39,37 @@ jq -e \
     ((.INVENTORY_MCP_URL | valid_url | not) or
       (.WORK_ORDERS_API_URL | valid_url | not)))
     then error("foundation deployment requires HTTPS service URLs")
-  elif ($operation == "agent" and
-    (["AZURE_RESOURCE_GROUP", "AZURE_AI_ACCOUNT_ID", "AZURE_AI_PROJECT_ID",
-      "AZURE_AI_FOUNDRY_PROJECT_ID", "AZURE_AI_ACCOUNT_NAME", "AZURE_AI_PROJECT_NAME",
-      "AZURE_AI_PROJECT_ENDPOINT", "FOUNDRY_PROJECT_ENDPOINT",
-      "AZURE_AI_PROJECT_ACR_CONNECTION_NAME", "AZURE_CONTAINER_REGISTRY_ENDPOINT",
-      "FOUNDRY_MODEL", "TOOLBOX_MCP_URL"] |
-    any(. as $key | ($parameters[$key] | type != "string" or length == 0))))
-    then error("agent parameters must explicitly provide all target IDs, endpoints, registry, and model values")
-  elif ($operation == "agent" and
-    (.AZURE_AI_PROJECT_ID != .AZURE_AI_FOUNDRY_PROJECT_ID or
-     .AZURE_AI_PROJECT_ENDPOINT != .FOUNDRY_PROJECT_ENDPOINT or
-     (.AZURE_AI_ACCOUNT_ID + "/projects/" + .AZURE_AI_PROJECT_NAME) != .AZURE_AI_PROJECT_ID or
-     ((.AZURE_AI_PROJECT_ID | startswith("/subscriptions/" + $subscription_id + "/")) | not) or
-     (.AZURE_AI_PROJECT_ENDPOINT | valid_url | not) or
-     (.FOUNDRY_PROJECT_ENDPOINT | valid_url | not) or
-     (.TOOLBOX_MCP_URL | valid_url | not) or
-     (.AZURE_CONTAINER_REGISTRY_ENDPOINT |
-       test("^[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$") | not) or
-     (.AZURE_AI_PROJECT_ENDPOINT |
-       endswith("/api/projects/" + $parameters.AZURE_AI_PROJECT_NAME) | not)))
-    then error("agent project IDs/endpoints must agree with each other and the authenticated subscription")
+  elif ($operation | IN("agent", "agent-validate")) then
+    . as $agent |
+    ($agent.AZURE_AI_PROJECT_ID | parse_project_id) as $project |
+    if (["AZURE_AI_PROJECT_ID", "AZURE_AI_PROJECT_ENDPOINT",
+         "AZURE_AI_PROJECT_ACR_CONNECTION_NAME", "AZURE_CONTAINER_REGISTRY_ENDPOINT",
+         "FOUNDRY_MODEL", "TOOLBOX_MCP_URL"] |
+        any(. as $key | ($agent[$key] | type != "string" or length == 0)))
+      then error("agent parameters require project ID and endpoint, registry connection and endpoint, model, and toolbox URL")
+    elif $project == null
+      then error("AZURE_AI_PROJECT_ID must be a Foundry project resource ID")
+    elif ($subscription_id != "" and
+      ($project.subscription | ascii_downcase) != ($subscription_id | ascii_downcase))
+      then error("AZURE_AI_PROJECT_ID must belong to the authenticated subscription")
+    elif (($agent.AZURE_AI_PROJECT_ENDPOINT | valid_url | not) or
+      ($agent.TOOLBOX_MCP_URL | valid_url | not) or
+      ($agent.AZURE_CONTAINER_REGISTRY_ENDPOINT |
+        test("^[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$") | not))
+      then error("agent endpoints must use HTTPS and the registry value must be a hostname")
+    elif ($agent.AZURE_AI_PROJECT_ENDPOINT |
+      endswith("/api/projects/" + $project.project_name) | not)
+      then error("AZURE_AI_PROJECT_ENDPOINT must identify the project in AZURE_AI_PROJECT_ID")
+    else
+      $agent + {
+        AZURE_RESOURCE_GROUP: $project.resource_group,
+        AZURE_AI_ACCOUNT_ID: ($agent.AZURE_AI_PROJECT_ID | sub("/projects/[^/]+$"; "")),
+        AZURE_AI_FOUNDRY_PROJECT_ID: $agent.AZURE_AI_PROJECT_ID,
+        AZURE_AI_ACCOUNT_NAME: $project.account_name,
+        AZURE_AI_PROJECT_NAME: $project.project_name,
+        FOUNDRY_PROJECT_ENDPOINT: $agent.AZURE_AI_PROJECT_ENDPOINT
+      }
+    end
   elif ($operation | IN("foundation-preview", "foundation-deploy", "agent",
     "foundation-validate", "agent-validate") | not)
     then error("unsupported deployment operation")

@@ -193,6 +193,11 @@ Blank target settings in the checked-in agent file must be filled before
 preflight/deploy; they are not populated from foundation. The agent has no
 foundation principal, Search, inventory, work-orders, model-capacity, or
 provisioning settings.
+The initializer derives the resource group, account/project names and IDs, and
+the `FOUNDRY_PROJECT_ENDPOINT` alias from the canonical project ID and endpoint.
+It checks the project ID format and subscription, requires HTTPS endpoints, and
+ensures the project endpoint path matches the project ID and the registry value
+is a hostname.
 
 [`main.parameters.json`](../foundation/infra/main.parameters.json) remains the
 Bicep interpolation adapter. CI initializes its environment from the selected
@@ -214,7 +219,7 @@ GITHUB_WORKSPACE="$PWD" PARAMETER_FILE=agent/parameters.json \
 
 There is no separate Python parameter mapper or GitHub-variable bootstrap
 checklist. Basic operation-specific required-field checks,
-principal object-ID format validation, explicit agent target consistency,
+principal object-ID format validation, agent project/subscription matching,
 what-if preview, knowledge-base ingestion checks, toolbox promotion verification,
 and agent smoke tests remain. First toolbox publication starts with an empty
 baseline only after a successful project toolbox listing confirms absence;

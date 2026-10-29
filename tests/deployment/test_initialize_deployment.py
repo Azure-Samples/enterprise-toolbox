@@ -34,25 +34,11 @@ class InitializeDeploymentTests(unittest.TestCase):
         self.agent = {
             "AZURE_ENV_NAME": "independent-agent",
             "AZURE_LOCATION": "westus",
-            "AZURE_RESOURCE_GROUP": "rg-agent",
-            "AZURE_AI_ACCOUNT_ID": (
-                "/subscriptions/sub-123/resourceGroups/rg-agent/providers/"
-                "Microsoft.CognitiveServices/accounts/other-account"
-            ),
             "AZURE_AI_PROJECT_ID": (
                 "/subscriptions/sub-123/resourceGroups/rg-agent/providers/"
                 "Microsoft.CognitiveServices/accounts/other-account/projects/other-project"
             ),
-            "AZURE_AI_FOUNDRY_PROJECT_ID": (
-                "/subscriptions/sub-123/resourceGroups/rg-agent/providers/"
-                "Microsoft.CognitiveServices/accounts/other-account/projects/other-project"
-            ),
-            "AZURE_AI_ACCOUNT_NAME": "other-account",
-            "AZURE_AI_PROJECT_NAME": "other-project",
             "AZURE_AI_PROJECT_ENDPOINT": (
-                "https://other-account.services.ai.azure.com/api/projects/other-project"
-            ),
-            "FOUNDRY_PROJECT_ENDPOINT": (
                 "https://other-account.services.ai.azure.com/api/projects/other-project"
             ),
             "AZURE_AI_PROJECT_ACR_CONNECTION_NAME": "other-registry",
@@ -222,6 +208,16 @@ class InitializeDeploymentTests(unittest.TestCase):
         settings = dict(item.split("=", 1) for item in commands[1][2:-4])
         for key, value in self.agent.items():
             self.assertEqual(settings[key], value)
+        self.assertEqual(settings["AZURE_RESOURCE_GROUP"], "rg-agent")
+        self.assertEqual(
+            settings["AZURE_AI_ACCOUNT_ID"],
+            "/subscriptions/sub-123/resourceGroups/rg-agent/providers/"
+            "Microsoft.CognitiveServices/accounts/other-account",
+        )
+        self.assertEqual(settings["AZURE_AI_FOUNDRY_PROJECT_ID"], self.agent["AZURE_AI_PROJECT_ID"])
+        self.assertEqual(settings["AZURE_AI_ACCOUNT_NAME"], "other-account")
+        self.assertEqual(settings["AZURE_AI_PROJECT_NAME"], "other-project")
+        self.assertEqual(settings["FOUNDRY_PROJECT_ENDPOINT"], self.agent["AZURE_AI_PROJECT_ENDPOINT"])
         self.assertEqual(settings["AZURE_TENANT_ID"], "tenant-123")
         self.assertEqual(self.export.read_text(encoding="utf-8"), "AZURE_ENV_NAME=independent-agent\n")
 
@@ -276,8 +272,8 @@ class InitializeDeploymentTests(unittest.TestCase):
         cases = [
             ("foundation-deploy", self.foundation | {"WORK_ORDERS_API_URL": ""}),
             ("agent", self.agent | {"TOOLBOX_MCP_URL": ""}),
-            ("agent", self.agent | {"FOUNDRY_PROJECT_ENDPOINT": "https://different.example"}),
             ("agent", self.agent | {"AZURE_AI_PROJECT_ID": "/subscriptions/other-sub/project"}),
+            ("agent", self.agent | {"AZURE_AI_PROJECT_ENDPOINT": "https://different.example"}),
             ("foundation-preview", self.foundation | {"BAD=KEY": "value"}),
             ("foundation-preview", self.foundation | {"AZURE_LOCATION": "bad\nvalue"}),
         ]
