@@ -115,24 +115,27 @@ def _validate_agent_build_context(document: dict[str, Any]) -> None:
     docker = service.get("docker") if isinstance(service, dict) else None
     if (
         not isinstance(service, dict)
-        or service.get("project") != ".."
+        or service.get("project") != "."
         or not isinstance(docker, dict)
-        or docker.get("path") != "./Dockerfile.agent"
+        or docker.get("path") != "../Dockerfile.agent"
+        or docker.get("context") != "../"
         or docker.get("remoteBuild") is not True
     ):
-        raise ValueError("The hosted agent must use the root project and remote Dockerfile.agent build.")
+        raise ValueError("The hosted agent must use the repository-root Docker build context.")
     project_root = (ROOT / "agent" / service["project"]).resolve()
-    if project_root != ROOT.resolve():
-        raise ValueError("The hosted-agent project path does not resolve to the repository root.")
+    build_context = (project_root / docker["context"]).resolve()
+    dockerfile = (project_root / docker["path"]).resolve()
+    if build_context != ROOT.resolve() or dockerfile != (ROOT / "Dockerfile.agent").resolve():
+        raise ValueError("The hosted-agent Dockerfile and context must resolve to the repository root.")
     required_inputs = (
         "Dockerfile.agent",
         "pyproject.toml",
         "uv.lock",
         "src/fibey/agent/hosted.py",
     )
-    missing = [relative for relative in required_inputs if not (project_root / relative).is_file()]
+    missing = [relative for relative in required_inputs if not (ROOT / relative).is_file()]
     if missing:
-        raise ValueError(f"The hosted-agent root build context is missing: {', '.join(missing)}.")
+        raise ValueError(f"The hosted-agent build inputs are missing: {', '.join(missing)}.")
 
 
 def main() -> int:

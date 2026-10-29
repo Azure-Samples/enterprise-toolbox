@@ -532,8 +532,12 @@ az login
 ### Deploy
 
 ```bash
-# From the repo root — builds Dockerfile.agent (remote build), deploys the
-# agent to the Foundry project, and provisions the model deployment if needed
+# Run azd from the agent project directory. Its Docker context points to the
+# repository root so the image can use the shared source and lockfiles.
+cd agent
+
+# Builds Dockerfile.agent remotely, deploys the agent, and provisions the
+# model deployment if needed.
 azd up
 
 # Or deploy only the agent (skip Container Apps)

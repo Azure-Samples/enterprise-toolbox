@@ -11,14 +11,15 @@ metadata:
     template: fibey-agent
 services:
     fibey-agent:
-        project: ..
+        project: .
         host: azure.ai.agent
         kind: hosted
         name: fibey-agent
         description: AI assistant for fiber optics field operations using inventory, work orders, and knowledge retrieval tools.
         language: docker
         docker:
-            path: ./Dockerfile.agent
+            path: ../Dockerfile.agent
+            context: ../
             remoteBuild: true
         container:
             resources:
