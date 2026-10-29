@@ -13,10 +13,18 @@ class SelectChangedPathsTests(unittest.TestCase):
         self.assertFalse(selected["agent"])
         self.assertTrue(selected["configuration"])
 
+    def test_selects_validation_for_operator_prerequisite_script(self) -> None:
+        selected = select_groups(["scripts/deploy-prerequisites.sh"])
+        self.assertTrue(selected["workflows"])
+        self.assertTrue(selected["configuration"])
+        self.assertFalse(selected["foundation"])
+        self.assertFalse(selected["agent"])
+
     def test_selects_foundation_for_infrastructure_and_knowledge_docs(self) -> None:
         for path in (
             "foundation/infra/main.bicep",
             "services/foundry-iq-docs/docs/safety.md",
+            "services/infra/main.bicep",
         ):
             with self.subTest(path=path):
                 selected = select_groups([path])

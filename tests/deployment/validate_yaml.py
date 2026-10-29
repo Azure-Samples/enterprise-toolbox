@@ -189,14 +189,16 @@ def main() -> int:
                 )
                 return 1
         print(f"OK  bash syntax {relative_path}")
-    for script in sorted((ROOT / ".github/scripts").glob("*.sh")):
+    scripts = sorted((ROOT / ".github/scripts").glob("*.sh"))
+    scripts.append(ROOT / "scripts/deploy-prerequisites.sh")
+    for script in scripts:
         result = subprocess.run(
             ["bash", "-n", str(script)], text=True, capture_output=True, check=False
         )
         if result.returncode:
             print(f"ERR {script.name}: {result.stderr.strip()}", file=sys.stderr)
             return 1
-        print(f"OK  bash syntax .github/scripts/{script.name}")
+        print(f"OK  bash syntax {script.relative_to(ROOT).as_posix()}")
     return 0
 
 

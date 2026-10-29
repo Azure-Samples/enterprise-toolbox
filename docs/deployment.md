@@ -57,6 +57,33 @@ the workflow checks the hosted-agent status and issues a new-session,
 read-only inventory smoke prompt for `FIB-002`; it explicitly does not request
 work-order creation or updates.
 
+### Deploy inventory and work-orders services separately
+
+The Inventory MCP and Work Orders API are separate Container Apps; the
+foundation workflow does not build or deploy them. Before the foundation
+deployment, sign in to the intended Azure subscription and run this
+operator-invoked prerequisite script:
+
+```bash
+AZURE_SUBSCRIPTION_ID=<subscription-id> bash scripts/deploy-prerequisites.sh
+```
+
+The script uses `AZURE_ENV_NAME` and `AZURE_LOCATION` from the foundation
+parameter file, creates only the service resources in the derived resource
+group, and uses the same deterministic ACR name as the foundation. It builds
+both `linux/amd64` images in ACR, deploys the two apps, and waits for their
+health endpoints. After both checks succeed, it writes the resulting HTTPS URLs
+to `INVENTORY_MCP_URL` and `WORK_ORDERS_API_URL` in the foundation parameter
+file. It is not called by either GitHub deployment workflow; run it manually
+before foundation `provision-and-toolbox`. The current Azure identity receives
+`AcrPush`; a user-assigned managed identity receives `AcrPull`. ACR admin
+credentials are disabled. The apps scale to zero when idle, so the first
+request after idle may have a cold start.
+
+The script does not provision Foundry, AI Search, the model, or the toolbox. The
+standalone ACR name is intentionally shared with the later foundation
+deployment to avoid creating a second registry.
+
 ### Independent parameter-driven deployments
 
 1. Configure OIDC and the three authentication secrets below.
@@ -66,10 +93,9 @@ work-order creation or updates.
    The initializer reads the object ID (`oid`) from the Azure CLI's ARM access
    token without logging the token or requiring Microsoft Graph permissions.
    Identity resolution failures stop initialization; there is no file fallback.
-   Set
-   `INVENTORY_MCP_URL` and `WORK_ORDERS_API_URL` to the external services' HTTPS
-   endpoints before `provision-and-toolbox`. Preview does not require these URLs.
-   The checked-in blanks are intentionally unresolved, not placeholder services.
+   Run `scripts/deploy-prerequisites.sh` first when deploying the Inventory MCP
+   and Work Orders API from this repository; it writes their HTTPS endpoints to
+   the parameter file. Foundation preview does not require these URLs.
 3. Run foundation `preview`, then `provision-and-toolbox`. No existing Fibey
    resource, successful ARM deployment, local `.azure` state, or prior-run
    artifact is required. Provisioning produces the outputs used by the
@@ -109,10 +135,12 @@ Generated state under `foundation/.azure/` and
 `agent/.azure/` is ignored, not versioned, so clean runners need no state
 cleanup step. Local azd state remains on your machine.
 
-Multi-line shell logic lives in [`.github/scripts/`](../.github/scripts/)
+Workflow shell logic lives in [`.github/scripts/`](../.github/scripts/)
 (parameter loading, preview, `azd deploy`/`azd provision`
 via the shared `run-azd` action with optional promotion check, and agent smoke
-test). Workflows and
+test). The manually invoked services prerequisite is
+[`scripts/deploy-prerequisites.sh`](../scripts/deploy-prerequisites.sh).
+Workflows and
 actions pass inputs as environment variables and call them with
 `bash "$GITHUB_WORKSPACE/.github/scripts/<name>.sh"`. The scripts are ShellCheck-linted in PR
 validation; focused offline tests cover toolbox promotion and sensitive-output

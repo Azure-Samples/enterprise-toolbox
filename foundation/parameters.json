@@ -18,8 +18,8 @@
   "TOOLBOX_NAME": "fibey-toolbox",
   "KB_NAME": "fibey-field-ops-kb",
   "AZURE_SEARCH_INDEX": "foundry-iq-docs-index",
-  "INVENTORY_MCP_URL": "",
-  "WORK_ORDERS_API_URL": "",
+  "INVENTORY_MCP_URL": "https://fibey-ent-inventory-mcp.ashysea-fa4e3b27.eastus2.azurecontainerapps.io/mcp?api-version=v1",
+  "WORK_ORDERS_API_URL": "https://fibey-ent-work-orders.ashysea-fa4e3b27.eastus2.azurecontainerapps.io",
   "AI_PROJECT_DEPLOYMENTS": [],
   "AI_PROJECT_CONNECTIONS": [],
   "AI_PROJECT_DEPENDENT_RESOURCES": []

@@ -136,7 +136,7 @@ class InitializeDeploymentTests(unittest.TestCase):
         result = self._run("foundation-deploy", "foundation")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self._commands()
-        self.assertEqual(commands[0][:3], ["env", "new", "fibey-jf-1026"])
+        self.assertEqual(commands[0][:3], ["env", "new", self.foundation["AZURE_ENV_NAME"]])
         self.assertEqual(commands[1][:2], ["env", "set"])
         settings = dict(item.split("=", 1) for item in commands[1][2:-4])
         self.assertEqual(settings["AZURE_PRINCIPAL_ID"], SIGNED_IN_PRINCIPAL_ID)
@@ -146,7 +146,10 @@ class InitializeDeploymentTests(unittest.TestCase):
         self.assertEqual(settings["ENABLE_HOSTED_AGENTS"], "true")
         self.assertEqual(settings["AI_PROJECT_CONNECTIONS"], "[]")
         self.assertEqual(settings["AZURE_TENANT_ID"], "tenant-123")
-        self.assertEqual(self.export.read_text(encoding="utf-8"), "AZURE_ENV_NAME=fibey-jf-1026\n")
+        self.assertEqual(
+            self.export.read_text(encoding="utf-8"),
+            f"AZURE_ENV_NAME={self.foundation['AZURE_ENV_NAME']}\n",
+        )
         self.assertNotIn("not-executed", result.stdout + result.stderr + self.summary.read_text())
         self.assertNotIn("header.", result.stdout + result.stderr + self.summary.read_text())
 

@@ -10,9 +10,12 @@ def select_groups(paths: Iterable[str]) -> dict[str, bool]:
         path.replace("\\", "/").removeprefix("./") for path in paths if path
     )
     test_changes = any(path.startswith("tests/deployment/") for path in changed)
-    workflows = test_changes or any(path.startswith(".github/") for path in changed)
+    workflows = test_changes or any(
+        path.startswith(".github/") or path == "scripts/deploy-prerequisites.sh"
+        for path in changed
+    )
     foundation = test_changes or any(
-        path.startswith(("foundation/", "services/foundry-iq-docs/"))
+        path.startswith(("foundation/", "services/foundry-iq-docs/", "services/infra/"))
         for path in changed
     )
     agent = test_changes or any(
