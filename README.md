@@ -86,8 +86,12 @@ keep those lifecycles separate:
   in both jobs with the same pinned version. Deploy publishes/promotes a new toolbox version
   but does not configure or refresh the knowledge base. There is no separate
   preview operation.
-- [Agent workflow](.github/workflows/deploy-agent.yml): independently preflight
-  or deploy only the hosted `fibey-agent`. Preflight is the default.
+- [Agent workflow](.github/workflows/deploy-agent.yml): independently run
+  **Build → Deploy** for the hosted `fibey-agent`, using the fixed checked-in
+  agent parameters. Build validates and publishes only required source files
+  without Azure credentials. Deploy uses the `fibey-agent` environment,
+  performs one remote image build/deployment, and runs a read-only inventory
+  smoke test.
 - [UI and gateway script](scripts/deploy-fibey-ui-gateway.sh): manually preview or
   deploy only the React UI and FastAPI gateway into the existing Fibey Container
   Apps environment. The gateway is private to the environment; the UI Nginx

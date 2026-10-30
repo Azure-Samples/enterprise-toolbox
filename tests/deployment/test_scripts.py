@@ -125,18 +125,24 @@ class ScriptTests(unittest.TestCase):
     def _calls(self) -> list[list[str]]:
         return [json.loads(line) for line in self.log.read_text(encoding="utf-8").splitlines()]
 
-    def _initialize_agent(self, parameters: dict, failure: str = "") -> subprocess.CompletedProcess[str]:
+    def _initialize_agent(
+        self, parameters: dict, failure: str = "", validate_only: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
         parameter_file = self.root / "agent-parameters.json"
         parameter_file.write_text(json.dumps(parameters), encoding="utf-8")
         project = self.root / "agent"
         project.mkdir(exist_ok=True)
+        command = ["bash", str(ROOT / ".github/scripts/initialize-agent.sh")]
+        if validate_only:
+            command.append("--validate")
         return self._run(
-            ["bash", str(ROOT / ".github/scripts/initialize-deployment.sh")],
+            command,
             PARAMETER_FILE=str(parameter_file),
-            PROJECT_DIRECTORY=str(project),
-            OPERATION="agent",
-            AZURE_SUBSCRIPTION_ID="sub-123",
-            AZURE_TENANT_ID="tenant-123",
+            PROJECT_DIRECTORY="" if validate_only else str(project),
+            AZURE_SUBSCRIPTION_ID="" if validate_only else "sub-123",
+            AZURE_TENANT_ID="" if validate_only else "tenant-123",
+            GITHUB_ENV="" if validate_only else str(self.export),
+            GITHUB_STEP_SUMMARY="" if validate_only else str(self.summary),
             FAIL_OPERATION=failure,
         )
 
@@ -307,6 +313,12 @@ class ScriptTests(unittest.TestCase):
 
     def test_agent_initialization_uses_its_own_parameters(self) -> None:
         self._mock_azd(ENVIRONMENT_MOCK)
+        result = self._initialize_agent(AGENT_PARAMETERS, validate_only=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.log.exists())
+        self.assertFalse(self.export.exists())
+        self.assertFalse(self.summary.exists())
+        self.assertFalse((self.root / "agent/.azure").exists())
         result = self._initialize_agent(AGENT_PARAMETERS)
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self._calls()
@@ -329,10 +341,21 @@ class ScriptTests(unittest.TestCase):
 
     def test_agent_initialization_rejects_bad_inputs_and_azd_failures(self) -> None:
         self._mock_azd(ENVIRONMENT_MOCK)
+        result = self._initialize_agent(
+            {**AGENT_PARAMETERS, "AZURE_AI_PROJECT_ID": "/invalid"}, validate_only=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be a Foundry project resource ID", result.stderr)
+        self.assertFalse(self.log.exists())
         cases = (
             ({"TOOLBOX_MCP_URL": ""}, "", "agent parameters require"),
             ({"AZURE_AI_PROJECT_ID": AGENT_PARAMETERS["AZURE_AI_PROJECT_ID"].replace("sub-123", "other")},
              "", "authenticated subscription"),
+            ({"TOOLBOX_MCP_URL": "http://tools.example"}, "", "agent endpoints must use HTTPS"),
+            ({"TOOLBOX_MCP_URL": "https:///missing-host"}, "", "agent endpoints must use HTTPS"),
+            ({"AZURE_AI_PROJECT_ENDPOINT": "https://example/api/projects/wrong"},
+             "", "must identify the project"),
+            ({}, "new", "mock new failed"),
             ({}, "set", "mock set failed"),
         )
         for overrides, failure, message in cases:
@@ -345,28 +368,49 @@ class ScriptTests(unittest.TestCase):
                 self.assertFalse(self.export.exists())
                 self.assertFalse(self.summary.exists())
                 if failure:
-                    self.assertEqual(len(self._calls()), 2)
+                    self.assertEqual(len(self._calls()), 1 if failure == "new" else 2)
                 else:
                     self.assertFalse(self.log.exists())
 
-    def test_agent_deploy_wrapper_propagates_failures(self) -> None:
+    def test_agent_deploy_and_read_only_smoke_propagate_failures(self) -> None:
+        workflow = yaml.load(
+            (ROOT / ".github/workflows/deploy-agent.yml").read_text(encoding="utf-8"),
+            Loader=yaml.BaseLoader,
+        )
+        steps = workflow["jobs"]["deploy"]["steps"]
+        deployment = next(step["run"] for step in steps if step.get("run") == "azd deploy fibey-agent --no-prompt")
+        smoke = next(step["run"] for step in steps if "azd ai agent show" in step.get("run", ""))
         self._mock_azd("""
-            if args != ["deploy", "fibey-agent", "--no-prompt"]:
+            if args == ["deploy", "fibey-agent", "--no-prompt"]:
+                operation = "deploy"
+            elif args == ["ai", "agent", "show", "fibey-agent", "--no-prompt", "--output", "json"]:
+                operation = "show"
+            elif args[:3] == ["ai", "agent", "invoke"]:
+                operation = "invoke"
+            else:
                 raise SystemExit(f"Unexpected azd command: {args}")
-            if os.environ.get("FAIL_OPERATION") == "deploy":
-                print("mock deployment failed", file=sys.stderr)
+            if os.environ.get("FAIL_OPERATION") == operation:
+                print(f"mock {operation} failed", file=sys.stderr)
                 raise SystemExit(7)
-            print("deployed")
         """)
-        command = ["bash", str(ROOT / ".github/scripts/run-azd.sh")]
-        env = {"PROJECT_DIRECTORY": str(self.root), "COMMAND": "deploy", "SERVICE": "fibey-agent"}
-        result = self._run(command, **env)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self._calls(), [["deploy", "fibey-agent", "--no-prompt"]])
-
-        result = self._run(command, FAIL_OPERATION="deploy", **env)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Deployment of fibey-agent failed.", result.stderr)
+        expected = [
+            ["deploy", "fibey-agent", "--no-prompt"],
+            ["ai", "agent", "show", "fibey-agent", "--no-prompt", "--output", "json"],
+            ["ai", "agent", "invoke", "--new-session",
+             "Look up part FIB-002 and report its description and current stock by warehouse. Do not create or update work orders.",
+             "--no-prompt"],
+        ]
+        for failure, count in (("", 3), ("deploy", 1), ("show", 2), ("invoke", 3)):
+            with self.subTest(failure=failure):
+                self.log.unlink(missing_ok=True)
+                result = self._run(
+                    ["bash", "-e", "-o", "pipefail", "-c", deployment + "\n" + smoke],
+                    FAIL_OPERATION=failure,
+                )
+                self.assertEqual(result.returncode, 7 if failure else 0, result.stderr)
+                self.assertEqual(self._calls(), expected[:count])
+                if failure:
+                    self.assertIn(f"mock {failure} failed", result.stderr)
 
     def test_local_knowledge_setup_is_opt_in_and_failure_propagates(self) -> None:
         project = self.root / "fibey project"

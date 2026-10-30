@@ -139,34 +139,112 @@ class WorkflowTests(unittest.TestCase):
             self.assertFalse((deploy / "infra/main.json").exists())
             self.assertFalse((deploy / "scripts").exists())
 
-    def test_agent_workflow_uses_its_own_parameters_and_service(self) -> None:
+    def test_agent_build_deploy_uses_fixed_parameters_and_environment_auth(self) -> None:
         workflow = load_workflow("deploy-agent.yml")
-        inputs = workflow["on"]["workflow_dispatch"]["inputs"]
-        self.assertEqual(inputs["parameter_file"]["default"], "agent/parameters.json")
-        self.assertEqual(set(inputs["operation"]["options"]), {"preflight", "deploy"})
+        self.assertEqual(workflow["on"]["workflow_dispatch"], {})
+        self.assertEqual(set(workflow["jobs"]), {"build", "deploy"})
         self.assertEqual(workflow["concurrency"], load_workflow("deploy-foundation.yml")["concurrency"])
-
-        for name in ("preflight", "deploy"):
-            with self.subTest(job=name):
-                job = workflow["jobs"][name]
-                self.assertEqual(job["environment"], "fibey-agent")
-                self.assertEqual(job["if"], f"inputs.operation == '{name}'")
-                initialize = find_action(job["steps"], "./.github/actions/initialize-deployment")
-                self.assertEqual(initialize["uses"], "./.github/actions/initialize-deployment")
-                self.assertEqual(initialize["with"]["project-directory"], "agent")
-                self.assertEqual(initialize["with"]["parameter-file"], "${{ inputs.parameter_file }}")
-                self.assertEqual(initialize["with"]["operation"], "agent")
+        build = workflow["jobs"]["build"]
+        deploy = workflow["jobs"]["deploy"]
+        self.assertEqual(deploy["needs"], "build")
+        self.assertNotIn("environment", build)
+        self.assertNotIn("id-token", build.get("permissions", {}))
+        self.assertNotIn("id-token", workflow["permissions"])
         self.assertFalse(any(
-            step.get("uses", "").startswith("./.github/actions/run-azd")
-            for step in workflow["jobs"]["preflight"]["steps"]
+            step.get("uses", "").startswith(("Azure/", "./")) for step in build["steps"]
         ))
-        steps = workflow["jobs"]["deploy"]["steps"]
-        deploy = find_action(steps, "./.github/actions/run-azd")
-        self.assertEqual(deploy["uses"], "./.github/actions/run-azd")
-        self.assertEqual(deploy["with"]["project-directory"], "agent")
-        self.assertEqual(deploy["with"]["service"], "fibey-agent")
-        smoke = next(step for step in steps if "agent-smoke.sh" in step.get("run", ""))
-        self.assertLess(steps.index(deploy), steps.index(smoke))
+        validation = next(step for step in build["steps"] if "--validate" in step.get("run", ""))
+        self.assertEqual(validation["env"]["PARAMETER_FILE"], "agent/parameters.json")
+        upload = find_action(build["steps"], "actions/upload-artifact@")
+        self.assertLess(build["steps"].index(validation), build["steps"].index(upload))
+        self.assertEqual(upload["with"]["if-no-files-found"], "error")
+        self.assertEqual(upload["with"]["include-hidden-files"], "true")
+        self.assertEqual(set(upload["with"]["path"].splitlines()), {
+            "Dockerfile.agent", ".dockerignore", "pyproject.toml", "uv.lock",
+            "src/fibey/**", "agent/azure.yaml", "agent/parameters.json",
+            ".github/scripts/initialize-agent.sh",
+        })
+
+        self.assertEqual(deploy["environment"], "fibey-agent")
+        self.assertEqual(deploy["permissions"]["id-token"], "write")
+        steps = deploy["steps"]
+        download = find_action(steps, "actions/download-artifact@")
+        self.assertEqual(download["with"]["name"], upload["with"]["name"])
+        self.assertEqual(download["with"]["path"], "${{ github.workspace }}")
+        self.assertFalse(any(step.get("uses", "").startswith("actions/checkout@") for step in steps))
+        login = find_action(steps, "Azure/login@")
+        for name in ("client", "tenant", "subscription"):
+            self.assertEqual(
+                login["with"][f"{name}-id"],
+                "${{ secrets.AZURE_" + name.upper() + "_ID }}",
+            )
+        setup = find_action(steps, "Azure/setup-azd@")
+        self.assertEqual(setup["with"]["version"], "${{ env.AZD_VERSION }}")
+        initialize = next(
+            step for step in steps if step.get("run") == "bash .github/scripts/initialize-agent.sh"
+        )
+        self.assertEqual(initialize["env"]["PARAMETER_FILE"], "agent/parameters.json")
+        self.assertEqual(initialize["env"]["PROJECT_DIRECTORY"], "agent")
+        deployment = next(step for step in steps if step.get("run") == "azd deploy fibey-agent --no-prompt")
+        smoke = next(step for step in steps if "azd ai agent show" in step.get("run", ""))
+        ordered = [download, login, setup, initialize, deployment, smoke]
+        self.assertEqual([steps.index(step) for step in ordered], sorted(steps.index(step) for step in ordered))
+        for step in (deployment, smoke):
+            self.assertEqual(step["working-directory"], "agent")
+            self.assertNotIn("if", step)
+            self.assertNotIn("continue-on-error", step)
+        for job in workflow["jobs"].values():
+            self.assertNotIn("if", job)
+            for step in job["steps"]:
+                if "uses" in step:
+                    self.assertRegex(step["uses"], r"@v\d+\.\d+\.\d+$")
+
+    def test_agent_source_artifact_restores_the_root_build_context(self) -> None:
+        workflow = load_workflow("deploy-agent.yml")
+        upload = find_action(workflow["jobs"]["build"]["steps"], "actions/upload-artifact@")
+        paths = upload["with"]["path"].splitlines()
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory).resolve() / "build"
+            deploy = Path(directory).resolve() / "deploy"
+            shutil.copytree(
+                ROOT / "src/fibey", build / "src/fibey",
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+            for relative in paths:
+                if "*" not in relative:
+                    destination = build / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(ROOT / relative, destination)
+            for relative in (".env", "agent/.azure/test/.env", "ui/index.html"):
+                destination = build / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text("not deployment input", encoding="utf-8")
+            prefixes = [build / path.split("*", 1)[0].rstrip("/") for path in paths]
+            upload_root = Path(os.path.commonpath(prefixes))
+            self.assertEqual(upload_root, build)
+            for pattern in paths:
+                for match in glob.glob(str(build / pattern), recursive=True):
+                    source = Path(match)
+                    if source.is_file():
+                        destination = deploy / source.relative_to(upload_root)
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(source, destination)
+            for relative in (
+                "pyproject.toml", "uv.lock", ".dockerignore", "agent/parameters.json",
+                ".github/scripts/initialize-agent.sh", "src/fibey/agent/hosted.py",
+                "src/fibey/agent/prompts/system_prompt.md",
+            ):
+                self.assertTrue((deploy / relative).is_file(), relative)
+            manifest = yaml.safe_load((deploy / "agent/azure.yaml").read_text(encoding="utf-8"))
+            service = manifest["services"]["fibey-agent"]
+            project = deploy / "agent" / service["project"]
+            self.assertEqual((project / service["docker"]["context"]).resolve(), deploy)
+            self.assertEqual(
+                (project / service["docker"]["path"]).resolve(), deploy / "Dockerfile.agent",
+            )
+            self.assertTrue((deploy / "Dockerfile.agent").is_file())
+            for relative in (".env", "agent/.azure", "ui", "foundation", "services"):
+                self.assertFalse((deploy / relative).exists(), relative)
 
     def test_changed_paths_select_relevant_validation_groups(self) -> None:
         all_groups = {"workflows", "foundation", "agent", "ui", "configuration"}

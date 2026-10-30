@@ -28,13 +28,12 @@ requests. Each deployment owns a checked-in parameter file:
 - Foundation uses
   [`foundation/infra/main.parameters.json`](../foundation/infra/main.parameters.json)
   directly in both jobs.
-- Agent uses [`agent/parameters.json`](../agent/parameters.json), selected by its
-  `parameter_file` input.
+- Agent always uses [`agent/parameters.json`](../agent/parameters.json).
 
 | Workflow | Operations |
 |---|---|
 | [Foundation](../.github/workflows/deploy-foundation.yml) | Build → Deploy, with infrastructure what-if in Build |
-| [Hosted agent](../.github/workflows/deploy-agent.yml) | `preflight` (default) or `deploy` |
+| [Hosted agent](../.github/workflows/deploy-agent.yml) | Build → Deploy, with offline source validation in Build |
 | [PR validation](../.github/workflows/validate.yml) | Stable, path-selected checks; no Azure credentials |
 
 The PR workflow always reports the same required check, including for changes
@@ -106,10 +105,43 @@ toolbox. Toolbox deployment creates a new version even when its definition is
 unchanged; there is no content-based skip. The postdeploy hook promotes that new
 version to the default. Build's what-if creates no toolbox version.
 After a toolbox deployment, the step log records the exact version
-published by the hook, which also verifies the active default. After an agent
-deployment, the workflow checks the hosted-agent status and issues a new-session,
-read-only inventory smoke prompt for `FIB-002`; it explicitly does not request
-work-order creation or updates.
+published by the hook, which also verifies the active default.
+
+### Hosted-agent Build → Deploy
+
+Every agent dispatch runs two dependent jobs with the fixed
+[`agent/parameters.json`](../agent/parameters.json):
+
+1. **Build** checks parameter structure, required settings, and endpoint formats
+   offline, then publishes the `agent-deployment` source artifact. This job
+   needs no Azure login, azd, OIDC permission, or deployment-environment approval.
+   It does not check remote resource readiness or build a container image.
+2. **Deploy** waits for Build and any configured `fibey-agent` environment
+   approval. It downloads that same run's artifact without a second checkout,
+   signs in through environment-based OIDC, installs the pinned azd and agents
+   extension, and initializes a fresh azd environment from the artifact's
+   parameters. Initialization also checks the target project's subscription.
+   A direct `azd deploy fibey-agent --no-prompt` performs the single ACR remote
+   image build and hosted-agent deployment.
+
+The source artifact contains only `Dockerfile.agent`, `.dockerignore`,
+`pyproject.toml`, `uv.lock`, the `src/fibey/` package including prompts,
+`agent/azure.yaml`, `agent/parameters.json`, and the focused
+[agent initializer](../.github/scripts/initialize-agent.sh). The explicit
+whitelist includes hidden files so the Docker ignore file and `.github`
+helper are retained. The artifact restores at the workspace root, preserving
+the manifest's `../Dockerfile.agent` and `../` Docker context. No `.azure`
+state, `.env`, credentials, generated configuration, logs, or unrelated
+foundation/UI/service files are published. There is no separate parameter
+snapshot or prebuilt-image artifact. With `remoteBuild: true`, azd defers the
+image build to publish/deploy; a separate `azd package` is not needed here.
+
+After successful deployment, the workflow checks the hosted-agent status and
+issues a new-session, read-only inventory smoke prompt for `FIB-002`,
+explicitly prohibiting work-order creation or updates. Deployment or smoke-test
+command failures fail the job. Neither job provisions foundation resources,
+deploys the toolbox, or sets up the knowledge base. The existing credential-free
+PR image-build and import checks remain separate.
 
 ### Deploy UI and gateway with the script
 
@@ -189,13 +221,14 @@ deployment to avoid creating a second registry.
    available.
 4. Independently configure the agent parameter file with its target project ARM
    ID, project endpoint, ACR connection name, registry hostname, deployed model
-   name, and toolbox URL. Then run agent `preflight` and `deploy`. These targets
-   must exist, but need not have been created by this foundation workflow.
-   Preflight validates configuration and initializes azd; it does not prove
-   remote resource readiness or import deployment history.
+   name, and toolbox URL. Then dispatch the agent Build → Deploy workflow.
+   These targets must exist, but need not have been created by this foundation
+   workflow. Build validates configuration offline; it does not prove remote
+   resource readiness or import deployment history.
 
-Both foundation jobs use GitHub Environment `fibey-foundation`; the agent workflow
-uses `fibey-agent`. Their azd environment names do not have to match. Foundation
+Both foundation jobs use GitHub Environment `fibey-foundation`; agent Deploy
+uses `fibey-agent`, while agent Build requires no authentication. Their azd
+environment names do not have to match. Foundation
 creates its ephemeral azd environment after ARM deployment, using the native
 deployment outputs.
 For foundation, an empty `resourceGroupName` derives
@@ -212,14 +245,14 @@ with the project endpoint. No Azure resource or ARM deployment discovery is
 performed. There is no deployment-name input, output-import action, or sync
 script between these lifecycles.
 
-Foundation Build and the agent jobs check out source; foundation Deploy instead
-downloads only the same-run runtime artifact. Foundation calls official
+Foundation and agent Build check out source; their Deploy jobs instead
+download only the same-run source artifact. Foundation calls official
 `Azure/login`, `Azure/bicep-deploy`, and artifact actions directly, with
 `Azure/setup-azd` only in Deploy. Build installs neither azd nor the toolbox extension.
-The agent continues using the shared
-[deployment setup action](../.github/actions/setup-deployment/action.yml) and
-[initialization action](../.github/actions/initialize-deployment/action.yml)
-to validate its parameters and initialize its own azd settings.
+Agent Deploy calls `Azure/login` and `Azure/setup-azd` directly and uses the
+focused [agent initializer](../.github/scripts/initialize-agent.sh)
+to validate its parameters and initialize its own azd settings. Both workflows
+use version-tagged official actions rather than generic composite wrappers.
 Generated state under `foundation/.azure/` and
 `agent/.azure/` is ignored, not versioned, so clean runners need no state
 cleanup step. Local azd state remains on your machine.
@@ -268,7 +301,7 @@ repository secrets if shared:
 GitHub environment secrets override same-name repository secrets. Both jobs use
 the same environment and secret names; ensure they identify the intended
 foundation identity and subscription. There is no custom cross-job identity or
-target comparison. The agent workflow continues using `fibey-agent`, where the
+target comparison. Agent Deploy uses `fibey-agent`, where the
 same secret names can be configured for a separately scoped identity.
 
 No GitHub Environment deployment variables are required. Foundation's parameter
@@ -297,7 +330,7 @@ Agent's file contains only agent deployment inputs:
 | `TOOLBOX_MCP_URL` | Explicit toolbox MCP URL, without `?api-version=v1` |
 
 Blank target settings in the checked-in agent file must be filled before
-preflight/deploy; they are not populated from foundation. The agent has no
+dispatching its workflow; they are not populated from foundation. The agent has no
 foundation principal, Search, inventory, work-orders, model-capacity, or
 provisioning settings.
 The initializer derives the resource group, account/project names and IDs, and
@@ -323,13 +356,13 @@ azd deploy fibey-toolbox
 ```
 
 Local provisioning still imports outputs, but knowledge-base setup is opt-in.
-The agent initialization shell script uses `jq` to read the selected JSON directly,
-check the minimum required values for the selected operation, and pass those
-values to azd. To validate a file offline without Azure or azd:
+The [agent initializer](../.github/scripts/initialize-agent.sh) uses `jq` to read
+the JSON directly, validate agent settings, and pass those values to azd.
+To validate the checked-in file offline without Azure, azd, or GitHub exports:
 
 ```bash
-GITHUB_WORKSPACE="$PWD" PARAMETER_FILE=agent/parameters.json \
-  OPERATION=agent-validate bash .github/scripts/initialize-deployment.sh
+PARAMETER_FILE=agent/parameters.json \
+  bash .github/scripts/initialize-agent.sh --validate
 ```
 
 Native ARM parameter validation, agent project/subscription matching,
@@ -344,7 +377,7 @@ Recent successful runs of this repository used these immutable subjects:
 | Job context | OIDC subject |
 |---|---|
 | Foundation Build and Deploy, `fibey-foundation` | `repo:Azure-Samples@1844662/enterprise-toolbox@1431382983:environment:fibey-foundation` |
-| Agent, `fibey-agent` | `repo:Azure-Samples@1844662/enterprise-toolbox@1431382983:environment:fibey-agent` |
+| Agent Deploy, `fibey-agent` | `repo:Azure-Samples@1844662/enterprise-toolbox@1431382983:environment:fibey-agent` |
 
 Use issuer `https://token.actions.githubusercontent.com` and audience
 `api://AzureADTokenExchange`. Protect both environments with required
@@ -359,8 +392,7 @@ identities; the workflows do not grant additional permissions to their own
 identities.
 
 The workflows share the non-cancelling `fibey-azure-mutation` GitHub concurrency
-group, including when different parameter files select the same target, so their
-mutations do not overlap with each other. This conservatively serializes all
+group, so their mutations do not overlap with each other. This conservatively serializes all
 targets in the repository. It does not serialize deployments
 or mutations started outside GitHub Actions. See the workflow files for the
 operation details and [Azure permission guidance](#github-actions-permissions).
@@ -371,7 +403,7 @@ Grant only the roles needed for the selected workflow operation. OIDC avoids
 stored client secrets, but it does not reduce the Azure permissions required by
 the operations themselves.
 
-- PR validation uses `contents: read` only and has no Azure login.
+- PR validation and agent Build use `contents: read` only and have no Azure login.
 - Deployment jobs use `contents: read` and `id-token: write`.
 - Foundation Build also authenticates to run ARM what-if. Reader alone is not
   sufficient; what-if requires deployment and template resource-operation
@@ -404,14 +436,13 @@ permissions to the workflow identities.
 gh workflow run deploy-foundation.yml
 
 # Separately deploy the agent once its configured target resources are ready.
-gh workflow run deploy-agent.yml \
-  -f operation=deploy -f parameter_file=agent/parameters.json
+gh workflow run deploy-agent.yml
 ```
 
 These commands dispatch asynchronous workflow runs; they do not orchestrate one
 deployment after another. Both foundation jobs use
 `foundation/infra/main.parameters.json` from the artifact. The agent workflow
-uses its own selectable file. Local foundation uses the same standard ARM
+uses its own fixed file from its source artifact. Local foundation uses the same standard ARM
 parameter file; local agent deployment still uses its own azd environment
 settings. Do not copy azd state between projects.
 
