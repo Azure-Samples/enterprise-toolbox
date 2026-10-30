@@ -58,6 +58,14 @@ jobs:
           filter_mode: nofilter
           fail_level: error
           path: .github/scripts
+      - name: Check operator prerequisite shell script
+        if: steps.changes.outputs.workflows == 'true'
+        uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
+        with:
+          reporter: local
+          filter_mode: nofilter
+          fail_level: error
+          path: scripts/deploy-prerequisites.sh
       - name: Check foundation shell scripts
         if: steps.changes.outputs.foundation == 'true'
         uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
@@ -69,12 +77,13 @@ jobs:
       - name: Run offline deployment tests
         if: steps.changes.outputs.configuration == 'true'
         run: python3 -m unittest discover -s tests/deployment -v
-      - name: Compile foundation Bicep
+      - name: Compile foundation and services Bicep
         if: steps.changes.outputs.foundation == 'true'
         run: |
           set -euo pipefail
           az bicep install --version v0.48.1
           az bicep build --file foundation/infra/main.bicep --stdout > /dev/null
+          az bicep build --file services/infra/main.bicep --stdout > /dev/null
       - name: Check agent dependency lock and Python syntax
         if: steps.changes.outputs.agent == 'true'
         run: |

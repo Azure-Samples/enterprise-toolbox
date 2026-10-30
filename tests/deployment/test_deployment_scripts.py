@@ -47,37 +47,49 @@ class DeploymentScriptTests(unittest.TestCase):
             timeout=30,
         )
 
-    def test_service_deploy_verifies_promotion_only_when_requested(self) -> None:
+    def test_service_deploy_does_not_require_promotion_confirmation(self) -> None:
         env = {"PROJECT_DIRECTORY": str(self.root), "COMMAND": "deploy", "SERVICE": "fibey-toolbox"}
-        self._mock_azd('[ "$*" = "deploy fibey-toolbox --no-prompt" ] || exit 9\necho "Promoted fibey-toolbox version 3 (id-3)."')
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="true", **env)
+        self._mock_azd('[ "$*" = "deploy fibey-toolbox --no-prompt" ] || exit 9\necho deployed')
+        result = self._run("run-azd.sh", **env)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("version 3", self.summary.read_text(encoding="utf-8"))
-
-        self.summary.unlink()
-        self._mock_azd("echo deployed")
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="true", **env)
-        self.assertEqual(result.returncode, 1)
         self.assertFalse(self.summary.exists())
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="false", **env)
-        self.assertEqual(result.returncode, 0, result.stderr)
 
         self._mock_azd("exit 5")
-        result = self._run("run-azd.sh", VERIFY_PROMOTION="false", **env)
+        result = self._run("run-azd.sh", **env)
         self.assertEqual(result.returncode, 1)
 
     def test_provision_suppresses_output_and_rejects_bad_input(self) -> None:
         base = {"PROJECT_DIRECTORY": str(self.root), "COMMAND": "provision"}
-        self._mock_azd('[ "$*" = "provision --no-prompt" ] || exit 9\necho SECRET-VALUE')
+        self._mock_azd(
+            '[ "$*" = "provision --no-prompt --output json" ] || exit 9\n'
+            'echo \'{"type":"provision","data":{"outputs":{"key":"SECRET-VALUE"}}}\'\n'
+            'echo \'{"type":"consoleMessage","data":{"message":"Provision completed."}}\' >&2'
+        )
         result = self._run("run-azd.sh", **base)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("SECRET-VALUE", result.stdout + result.stderr)
-        self._mock_azd("echo SECRET-VALUE; exit 5")
-        result = self._run("run-azd.sh", **base)
-        self.assertEqual(result.returncode, 1)
-        self.assertNotIn("SECRET-VALUE", result.stdout + result.stderr)
-        self.assertEqual(self._run("run-azd.sh", VERIFY_PROMOTION="true", **base).returncode, 2)
+        self.assertIn("Provision completed.", result.stdout)
         self.assertEqual(self._run("run-azd.sh", PROJECT_DIRECTORY=str(self.root), COMMAND="up").returncode, 2)
+
+    def test_provision_failure_reports_hook_diagnostics_without_output_values(self) -> None:
+        self._mock_azd(
+            'echo \'{"type":"provision","data":{"outputs":{"key":"SECRET-VALUE"}}}\'\n'
+            'echo \'{"type":"consoleMessage","data":{"message":"Running postprovision hook"}}\' >&2\n'
+            'echo \'{"type":"consoleMessage","data":{"message":"ERROR: AuthorizationPermissionMismatch"}}\' >&2\n'
+            "exit 5"
+        )
+        result = self._run("run-azd.sh", PROJECT_DIRECTORY=str(self.root), COMMAND="provision")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Running postprovision hook", result.stdout)
+        self.assertIn("ERROR: AuthorizationPermissionMismatch", result.stdout)
+        self.assertNotIn("SECRET-VALUE", result.stdout + result.stderr)
+
+    def test_provision_rejects_unstructured_diagnostics_without_printing_them(self) -> None:
+        self._mock_azd("echo SECRET-RAW-VALUE; exit 5")
+        result = self._run("run-azd.sh", PROJECT_DIRECTORY=str(self.root), COMMAND="provision")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Could not decode azd JSON diagnostics", result.stderr)
+        self.assertNotIn("SECRET-RAW-VALUE", result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

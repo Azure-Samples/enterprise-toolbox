@@ -22,12 +22,8 @@ param env array
 @description('Container registry server used for pulling the image.')
 param registryServer string
 
-@description('Container registry username used for pulling the image.')
-param registryUsername string
-
-@secure()
-@description('Container registry password used for pulling the image.')
-param registryPassword string
+@description('User-assigned managed identity resource ID used to pull images from ACR.')
+param registryIdentityResourceId string
 
 @description('Minimum replica count for the Container App.')
 param minReplicas int = 1
@@ -37,9 +33,6 @@ param maxReplicas int = 3
 
 @description('Tags applied to the Container App.')
 param tags object = {}
-
-@description('Enable a system-assigned managed identity on the Container App.')
-param enableSystemIdentity bool = false
 
 var resolvedContainerImage = empty(containerImage) ? 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest' : containerImage
 var appTags = union(tags, {
@@ -51,7 +44,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   location: location
   tags: appTags
   identity: {
-    type: enableSystemIdentity ? 'SystemAssigned' : 'None'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${registryIdentityResourceId}': {}
+    }
   }
   properties: {
     managedEnvironmentId: environmentId
@@ -65,14 +61,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: registryServer
-          username: registryUsername
-          passwordSecretRef: 'registry-password'
-        }
-      ]
-      secrets: [
-        {
-          name: 'registry-password'
-          value: registryPassword
+          identity: registryIdentityResourceId
         }
       ]
     }
@@ -82,6 +71,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: serviceName
           image: resolvedContainerImage
           env: env
+          probes: [
+            {
+              type: 'Readiness'
+              httpGet: {
+                path: '/health'
+                port: targetPort
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 5
+              periodSeconds: 10
+            }
+          ]
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -101,6 +102,3 @@ output id string = containerApp.id
 
 @description('Fully qualified domain name of the Container App ingress endpoint.')
 output fqdn string = containerApp.properties.configuration.ingress.fqdn
-
-@description('Principal ID of the system-assigned managed identity (empty when disabled).')
-output principalId string = enableSystemIdentity ? containerApp.identity.principalId : ''

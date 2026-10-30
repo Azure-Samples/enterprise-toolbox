@@ -88,7 +88,8 @@ keep those lifecycles separate:
 Each deployment owns its own parameter file, selected by its `parameter_file` input:
 
 - [`foundation/parameters.json`](foundation/parameters.json): infrastructure,
-  model/version/capacity, principal object ID, and external inventory/work-orders URLs.
+  model/version/capacity and external inventory/work-orders URLs. The foundation
+  workflow always resolves the principal object ID from its signed-in deployment identity.
 - [`agent/parameters.json`](agent/parameters.json): agent environment, target
   project ID/endpoint, registry connection/hostname, model name, and toolbox URL.
 

@@ -1,5 +1,5 @@
 name: Initialize deployment from parameters
-description: Create a fresh azd environment without requiring existing application resources
+description: Create a fresh azd environment using parameters and the signed-in foundation identity
 inputs:
   project-directory:
     description: Directory containing the azd project

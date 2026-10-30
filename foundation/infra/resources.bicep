@@ -30,18 +30,18 @@ param aiFoundryResourceName string
 @description('Name of the AI Foundry project.')
 param aiFoundryProjectName string
 
-@description('Model deployments requested by the azd AI agent extension (JSON).')
-param aiProjectDeploymentsJson string
+@description('Model deployments requested by the azd AI agent extension.')
+param aiProjectDeployments array
 
-@description('Project connections requested by the azd AI agent extension (JSON).')
-param aiProjectConnectionsJson string
+@description('Project connections requested by the azd AI agent extension.')
+param aiProjectConnections array
 
 @secure()
 @description('JSON map of connection name to credentials object.')
 param aiProjectConnectionCredentialsJson string
 
-@description('Dependent resources requested by the azd AI agent extension (JSON).')
-param aiProjectDependentResourcesJson string
+@description('Dependent resources requested by the azd AI agent extension.')
+param aiProjectDependentResources array
 
 @description('Enable hosted agent support on the Foundry project.')
 param enableHostedAgents bool
@@ -67,10 +67,7 @@ param toolboxName string
 @description('Name of the AI Search knowledge base.')
 param knowledgeBaseName string
 
-var aiProjectDeployments = json(aiProjectDeploymentsJson)
-var aiProjectConnections = json(aiProjectConnectionsJson)
 var aiProjectConnectionCreds = json(aiProjectConnectionCredentialsJson)
-var aiProjectDependentResources = json(aiProjectDependentResourcesJson)
 
 // When the azd AI agent extension hasn't requested any model deployments
 // (e.g. plain `azd provision`), fall back to deploying the default model.

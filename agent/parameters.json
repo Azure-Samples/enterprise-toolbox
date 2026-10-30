@@ -1,16 +1,10 @@
 {
   "AZURE_ENV_NAME": "fibey-agent-jf-1026",
   "AZURE_LOCATION": "eastus2",
-  "AZURE_RESOURCE_GROUP": "",
-  "AZURE_AI_ACCOUNT_ID": "",
-  "AZURE_AI_PROJECT_ID": "",
-  "AZURE_AI_FOUNDRY_PROJECT_ID": "",
-  "AZURE_AI_ACCOUNT_NAME": "",
-  "AZURE_AI_PROJECT_NAME": "",
-  "AZURE_AI_PROJECT_ENDPOINT": "",
-  "FOUNDRY_PROJECT_ENDPOINT": "",
-  "AZURE_AI_PROJECT_ACR_CONNECTION_NAME": "",
-  "AZURE_CONTAINER_REGISTRY_ENDPOINT": "",
+  "AZURE_AI_PROJECT_ID": "/subscriptions/9a7e9255-7824-4c0d-a414-366f436f61dd/resourceGroups/rg-fibey-ent/providers/Microsoft.CognitiveServices/accounts/ai-account-kdw352hfozmxw/projects/fibey-project",
+  "AZURE_AI_PROJECT_ENDPOINT": "https://ai-account-kdw352hfozmxw.services.ai.azure.com/api/projects/fibey-project",
+  "AZURE_AI_PROJECT_ACR_CONNECTION_NAME": "acr-kdw352hfozmxw",
+  "AZURE_CONTAINER_REGISTRY_ENDPOINT": "acrfibeyentlls4qn3t.azurecr.io",
   "FOUNDRY_MODEL": "gpt-4.1-mini",
-  "TOOLBOX_MCP_URL": ""
+  "TOOLBOX_MCP_URL": "https://ai-account-kdw352hfozmxw.services.ai.azure.com/api/projects/fibey-project/toolboxes/fibey-toolbox/mcp"
 }

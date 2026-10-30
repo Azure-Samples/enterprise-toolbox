@@ -57,14 +57,45 @@ the workflow checks the hosted-agent status and issues a new-session,
 read-only inventory smoke prompt for `FIB-002`; it explicitly does not request
 work-order creation or updates.
 
+### Deploy inventory and work-orders services separately
+
+The Inventory MCP and Work Orders API are separate Container Apps; the
+foundation workflow does not build or deploy them. Before the foundation
+deployment, sign in to the intended Azure subscription and run this
+operator-invoked prerequisite script:
+
+```bash
+AZURE_SUBSCRIPTION_ID=<subscription-id> bash scripts/deploy-prerequisites.sh
+```
+
+The script uses `AZURE_ENV_NAME` and `AZURE_LOCATION` from the foundation
+parameter file, creates only the service resources in the derived resource
+group, and uses the same deterministic ACR name as the foundation. It builds
+both `linux/amd64` images in ACR, deploys the two apps, and waits for their
+health endpoints. After both checks succeed, it writes the resulting HTTPS URLs
+to `INVENTORY_MCP_URL` and `WORK_ORDERS_API_URL` in the foundation parameter
+file. It is not called by either GitHub deployment workflow; run it manually
+before foundation `provision-and-toolbox`. The current Azure identity receives
+`AcrPush`; a user-assigned managed identity receives `AcrPull`. ACR admin
+credentials are disabled. The apps scale to zero when idle, so the first
+request after idle may have a cold start.
+
+The script does not provision Foundry, AI Search, the model, or the toolbox. The
+standalone ACR name is intentionally shared with the later foundation
+deployment to avoid creating a second registry.
+
 ### Independent parameter-driven deployments
 
 1. Configure OIDC and the three authentication secrets below.
-2. Edit the foundation parameter file. Set `AZURE_PRINCIPAL_ID` to the foundation
-   deployment identity's **object ID**, not its OIDC client ID. Set
-   `INVENTORY_MCP_URL` and `WORK_ORDERS_API_URL` to the external services' HTTPS
-   endpoints before `provision-and-toolbox`. Preview does not require these URLs.
-   The checked-in blanks are intentionally unresolved, not placeholder services.
+2. Edit the foundation parameter file. Foundation preview and deployment always
+   resolve `AZURE_PRINCIPAL_ID` from the signed-in OIDC deployment identity and
+   set `AZURE_PRINCIPAL_TYPE` to `ServicePrincipal`, overriding both file values.
+   The initializer reads the object ID (`oid`) from the Azure CLI's ARM access
+   token without logging the token or requiring Microsoft Graph permissions.
+   Identity resolution failures stop initialization; there is no file fallback.
+   Run `scripts/deploy-prerequisites.sh` first when deploying the Inventory MCP
+   and Work Orders API from this repository; it writes their HTTPS endpoints to
+   the parameter file. Foundation preview does not require these URLs.
 3. Run foundation `preview`, then `provision-and-toolbox`. No existing Fibey
    resource, successful ARM deployment, local `.azure` state, or prior-run
    artifact is required. Provisioning produces the outputs used by the
@@ -104,14 +135,24 @@ Generated state under `foundation/.azure/` and
 `agent/.azure/` is ignored, not versioned, so clean runners need no state
 cleanup step. Local azd state remains on your machine.
 
-Multi-line shell logic lives in [`.github/scripts/`](../.github/scripts/)
-(parameter loading, preview, `azd deploy`/`azd provision`
-via the shared `run-azd` action with optional promotion check, and agent smoke
-test). Workflows and
+Workflow shell logic lives in [`.github/scripts/`](../.github/scripts/)
+(parameter loading, preview, `azd deploy`/`azd provision` through the shared
+`run-azd` action, and agent smoke testing). The manually invoked services prerequisite is
+[`scripts/deploy-prerequisites.sh`](../scripts/deploy-prerequisites.sh).
+Workflows and
 actions pass inputs as environment variables and call them with
 `bash "$GITHUB_WORKSPACE/.github/scripts/<name>.sh"`. The scripts are ShellCheck-linted in PR
 validation; focused offline tests cover toolbox promotion and sensitive-output
 handling.
+
+Provisioning uses azd's JSON output mode and streams console diagnostics,
+including ARM errors and postprovision hook failures, into the Actions log.
+Structured provisioning output values are not printed. The raw JSON stream is
+kept only in the runner's temporary directory and is not uploaded as an artifact.
+An azd failure or a diagnostic-decoding failure fails the step explicitly.
+Toolbox deployment does not require a separate promoted-version confirmation
+in the wrapper; promotion remains handled by the configured toolbox lifecycle
+hook.
 
 Configure these GitHub Environment secrets in both environments:
 
@@ -121,10 +162,17 @@ Configure these GitHub Environment secrets in both environments:
 - `AZURE_SUBSCRIPTION_ID`
 
 No GitHub Environment deployment variables are required. Foundation's parameter
-file supplies names, regions, principal ID/type, model/version/capacity, feature
+file supplies names, regions, model/version/capacity, feature
 flags, knowledge-base/index names, non-secret extension inputs, and external
 service URLs. Use native JSON booleans, integers, and arrays. Do not put
 credentials, connection secrets, or credential-bearing URLs in this file.
+`AI_PROJECT_DEPLOYMENTS`, `AI_PROJECT_CONNECTIONS`, and
+`AI_PROJECT_DEPENDENT_RESOURCES` map to native Bicep array parameters. azd
+decodes their JSON environment values before submitting them to ARM; keep
+empty values as `[]`, not quoted JSON strings or ARM-escaped bracket strings.
+Principal ID/type fields are retained for direct local azd use but are ignored
+by the foundation GitHub Actions initializer. Offline `foundation-validate`
+does not resolve an identity or require Azure login.
 `TOOLBOX_NAME` must remain `fibey-toolbox`: the pinned extension uses the
 manifest's service key as the deployed toolbox name.
 
@@ -145,6 +193,11 @@ Blank target settings in the checked-in agent file must be filled before
 preflight/deploy; they are not populated from foundation. The agent has no
 foundation principal, Search, inventory, work-orders, model-capacity, or
 provisioning settings.
+The initializer derives the resource group, account/project names and IDs, and
+the `FOUNDRY_PROJECT_ENDPOINT` alias from the canonical project ID and endpoint.
+It checks the project ID format and subscription, requires HTTPS endpoints, and
+ensures the project endpoint path matches the project ID and the registry value
+is a hostname.
 
 [`main.parameters.json`](../foundation/infra/main.parameters.json) remains the
 Bicep interpolation adapter. CI initializes its environment from the selected
@@ -166,7 +219,7 @@ GITHUB_WORKSPACE="$PWD" PARAMETER_FILE=agent/parameters.json \
 
 There is no separate Python parameter mapper or GitHub-variable bootstrap
 checklist. Basic operation-specific required-field checks,
-principal object-ID format validation, explicit agent target consistency,
+principal object-ID format validation, agent project/subscription matching,
 what-if preview, knowledge-base ingestion checks, toolbox promotion verification,
 and agent smoke tests remain. First toolbox publication starts with an empty
 baseline only after a successful project toolbox listing confirms absence;
@@ -479,8 +532,12 @@ az login
 ### Deploy
 
 ```bash
-# From the repo root — builds Dockerfile.agent (remote build), deploys the
-# agent to the Foundry project, and provisions the model deployment if needed
+# Run azd from the agent project directory. Its Docker context points to the
+# repository root so the image can use the shared source and lockfiles.
+cd agent
+
+# Builds Dockerfile.agent remotely, deploys the agent, and provisions the
+# model deployment if needed.
 azd up
 
 # Or deploy only the agent (skip Container Apps)
