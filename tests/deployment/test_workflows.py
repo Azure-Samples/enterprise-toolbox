@@ -179,6 +179,16 @@ class WorkflowTests(unittest.TestCase):
                 selected = select_groups([path])
                 self.assertEqual({name for name, enabled in selected.items() if enabled}, expected)
 
+    def test_foundation_principal_defaults_handle_missing_user_identity(self) -> None:
+        template = (ROOT / "foundation/infra/main.bicep").read_text(encoding="utf-8")
+        self.assertIn("param principalId string = deployer().objectId", template)
+        principal_type = next(line for line in template.splitlines() if line.startswith("param principalType "))
+        self.assertEqual(
+            principal_type,
+            "param principalType string = empty(deployer().?userPrincipalName) "
+            "? 'ServicePrincipal' : 'User'",
+        )
+
     def test_container_identity_and_private_gateway(self) -> None:
         registry = (ROOT / "foundation/infra/modules/container-registry.bicep").read_text()
         container = (ROOT / "services/infra/modules/container-app.bicep").read_text()

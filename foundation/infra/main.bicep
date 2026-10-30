@@ -24,7 +24,7 @@ param searchServiceLocation string = ''
 param principalId string = deployer().objectId
 
 @description('Principal type of user or app.')
-param principalType string = empty(deployer().userPrincipalName) ? 'ServicePrincipal' : 'User'
+param principalType string = empty(deployer().?userPrincipalName) ? 'ServicePrincipal' : 'User'
 
 @description('Optional salt to diversify resource names across project recreations.')
 param resourceTokenSalt string = ''

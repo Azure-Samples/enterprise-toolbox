@@ -173,8 +173,9 @@ deployment to avoid creating a second registry.
 
 1. Configure OIDC and the three authentication secrets below.
 2. Edit the foundation ARM parameter file. The template defaults `principalId`
-   to `deployer().objectId` and selects User or ServicePrincipal based on the
-   deployer's UPN. No workflow token decoding or Microsoft Graph lookup is needed.
+   to `deployer().objectId` and selects User for a nonempty deployer UPN or
+   ServicePrincipal when it is absent or empty. No workflow token decoding or
+   Microsoft Graph lookup is needed.
    Explicit principal overrides remain available for intentional deployments.
    Run `scripts/deploy-prerequisites.sh` first when deploying the Inventory MCP
    and Work Orders API from this repository; it writes their HTTPS endpoints to
