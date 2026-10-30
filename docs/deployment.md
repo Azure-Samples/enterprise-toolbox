@@ -47,17 +47,18 @@ validation builds locally on the GitHub runner and does not push an image.
 
 Every foundation dispatch runs two dependent jobs:
 
-1. **Build** runs an authenticated subscription-scope ARM what-if from
-   `main.bicep` using the checked-in
+1. **Build** uses the `fibey-foundation` environment and runs an authenticated
+   subscription-scope ARM what-if from `main.bicep` using the checked-in
    official [`Azure/bicep-deploy`](https://github.com/Azure/bicep-deploy) action.
    The action compiles the source at the pinned Bicep version.
    Review its formatted change details in the **Preview infrastructure changes**
    step log. Build publishes the `foundation-deployment` artifact
    with `actions/upload-artifact` only after what-if succeeds.
    A compilation or what-if failure blocks Deploy.
-2. **Deploy** waits for Build and configured `fibey-foundation` approval, downloads
-   that same run's artifact with `actions/download-artifact`, without checking
-   out source, and authenticates again. It uses `Azure/bicep-deploy` to compile
+2. **Deploy** waits for Build and any configured `fibey-foundation` approval for
+   its own job, then downloads that same run's artifact with
+   `actions/download-artifact`, without checking out source, and authenticates
+   again. It uses `Azure/bicep-deploy` to compile
    and deploy the same Bicep source and checked-in parameter file that were previewed.
    The action compiles in each job; the build output is not separately published.
    It imports the successful deployment outputs into a fresh runner-local azd
@@ -91,8 +92,11 @@ fails, rerun the workflow after local setup. See
 [FoundryIQ knowledge-base setup](#foundryiq-knowledge-base-setup).
 
 Foundation deployment creates resources on day 0 and updates them on subsequent
-runs. Enable required reviewers on the `fibey-foundation` GitHub Environment;
-the workflow cannot configure protection rules for you.
+runs. Configure required reviewers and deployment-branch restrictions on the
+`fibey-foundation` GitHub Environment; the workflow cannot configure protection
+rules for you. Environment protection applies separately to both jobs, so
+required reviewers must approve Build before its what-if and Deploy after
+reviewing the preview.
 Regions come from parameters; the checked-in defaults keep Search in
 `centralus` and Foundry in `eastus2`.
 Toolbox promotion does not trigger an agent deployment. The hosted-agent
@@ -175,12 +179,13 @@ deployment to avoid creating a second registry.
    Run `scripts/deploy-prerequisites.sh` first when deploying the Inventory MCP
    and Work Orders API from this repository; it writes their HTTPS endpoints to
    the parameter file. Keep these endpoints HTTPS and free of credentials.
-3. Dispatch the foundation workflow, review Build's what-if step log, and approve
-   Deploy when environment protection requires it. The foundation infrastructure
-   can be provisioned without local `.azure` state or a prior-run artifact.
-   Its outputs configure toolbox deployment on the runner. After initial
-   provisioning, configure the knowledge base locally; retry the workflow if
-   toolbox publication failed because it was not yet available.
+3. Dispatch the foundation workflow, approve Build if environment protection
+   requires it, review Build's what-if step log, and approve Deploy if required.
+   The foundation infrastructure can be provisioned without local `.azure`
+   state or a prior-run artifact. Its outputs configure toolbox deployment on
+   the runner. After initial provisioning, configure the knowledge base locally;
+   retry the workflow if toolbox publication failed because it was not yet
+   available.
 4. Independently configure the agent parameter file with its target project ARM
    ID, project endpoint, ACR connection name, registry hostname, deployed model
    name, and toolbox URL. Then run agent `preflight` and `deploy`. These targets
@@ -188,10 +193,10 @@ deployment to avoid creating a second registry.
    Preflight validates configuration and initializes azd; it does not prove
    remote resource readiness or import deployment history.
 
-The foundation workflow uses protected GitHub Environment `fibey-foundation`;
-the agent workflow uses `fibey-agent`. Their azd environment names do not have
-to match. Foundation creates its ephemeral azd environment after ARM deployment,
-using the native deployment outputs.
+Both foundation jobs use GitHub Environment `fibey-foundation`; the agent workflow
+uses `fibey-agent`. Their azd environment names do not have to match. Foundation
+creates its ephemeral azd environment after ARM deployment, using the native
+deployment outputs.
 For foundation, an empty `resourceGroupName` derives
 `rg-<environmentName>`; an empty `aiFoundryResourceName` lets Bicep generate the
 account name. An empty AI or Search region inherits `location`.
@@ -242,18 +247,18 @@ Toolbox deployment does not require a separate promoted-version confirmation
 in a wrapper; promotion remains handled by the configured toolbox lifecycle
 hook in `foundation/azure.yaml`.
 
-Configure these **repository secrets** for both foundation stages:
+Configure these secrets in the `fibey-foundation` GitHub Environment, or as
+repository secrets if shared:
 
 - `AZURE_CLIENT_ID` — the client ID for the foundation deployment identity.
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 
-Keep `fibey-foundation` approval-only: remove any same-name Azure secrets from
-that environment, because GitHub environment secrets override repository
-secrets. Credential alignment is an operator responsibility; there is no custom
-cross-job identity/target comparison.
-The agent workflow is unchanged and continues reading these names from its
-own `fibey-agent` environment secrets and separately scoped identity.
+GitHub environment secrets override same-name repository secrets. Both jobs use
+the same environment and secret names; ensure they identify the intended
+foundation identity and subscription. There is no custom cross-job identity or
+target comparison. The agent workflow continues using `fibey-agent`, where the
+same secret names can be configured for a separately scoped identity.
 
 No GitHub Environment deployment variables are required. Foundation's parameter
 file supplies names, regions, model/version/capacity, feature
@@ -322,23 +327,22 @@ and agent smoke tests remain. First toolbox publication starts with an empty
 baseline only after a successful project toolbox listing confirms absence;
 authorization/network/list failures are not treated as an empty foundation.
 
-Configure both repository/ref and environment-subject federated credentials for
-the same foundation identity. For this repository and an allowed `main` dispatch,
-use:
+Configure an environment-subject federated credential for each workflow identity.
+Recent successful runs of this repository used these immutable subjects:
 
 | Job context | OIDC subject |
 |---|---|
-| Foundation Build, `main` | `repo:Azure-Samples/enterprise-toolbox:ref:refs/heads/main` |
-| Foundation Deploy, `fibey-foundation` | `repo:Azure-Samples/enterprise-toolbox:environment:fibey-foundation` |
-| Agent, `fibey-agent` | `repo:Azure-Samples/enterprise-toolbox:environment:fibey-agent` |
+| Foundation Build and Deploy, `fibey-foundation` | `repo:Azure-Samples@1844662/enterprise-toolbox@1431382983:environment:fibey-foundation` |
+| Agent, `fibey-agent` | `repo:Azure-Samples@1844662/enterprise-toolbox@1431382983:environment:fibey-agent` |
 
 Use issuer `https://token.actions.githubusercontent.com` and audience
 `api://AzureADTokenExchange`. Protect both environments with required
-approvals and deployment-branch restrictions. If the workflows run from another
-repository, replace `Azure-Samples/enterprise-toolbox` with its owner/repository
-name in the subject. Configure only intended Build dispatch refs, and account
-for any custom OIDC subject configuration. The workflows do not create or configure deployment
-identities or federated credentials. Resource role assignments declared by
+approvals and deployment-branch restrictions: an environment subject does not
+itself restrict the branch. For another repository or custom subject template,
+use the actual subject reported by `Azure/login` rather than copying these values.
+See GitHub's [OIDC subject reference](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims).
+The workflows do not create or configure deployment identities or federated
+credentials. Resource role assignments declared by
 foundation Bicep or the hosted-agent extension may still be applied to workload
 identities; the workflows do not grant additional permissions to their own
 identities.
@@ -360,7 +364,7 @@ the operations themselves.
 - Deployment jobs use `contents: read` and `id-token: write`.
 - Foundation Build also authenticates to run ARM what-if. Reader alone is not
   sufficient; what-if requires deployment and template resource-operation
-  permissions. Both foundation jobs use the same repository-configured identity,
+  permissions. Both foundation jobs use the same environment and secret names,
   so Build's non-mutating behavior does not imply a read-only identity.
 - Use separate deployment identities: foundation provisioning needs broader
   resource and role-assignment permissions than the hosted-agent deployment.

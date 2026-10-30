@@ -80,8 +80,9 @@ keep those lifecycles separate:
 - [Foundation workflow](.github/workflows/deploy-foundation.yml): manually run
   **Build → Deploy**. Build runs an infrastructure what-if from Bicep source
   with the official Azure deployment action and publishes that source and the
-  checked-in ARM parameter file. After environment approval, Deploy downloads
-  the artifact and runs the same action against those files. Bicep is compiled
+  checked-in ARM parameter file. Deploy downloads the artifact and runs the
+  same action against those files. Both jobs use the `fibey-foundation`
+  environment, so configured approvals apply to each job. Bicep is compiled
   in both jobs with the same pinned version. Deploy publishes/promotes a new toolbox version
   but does not configure or refresh the knowledge base. There is no separate
   preview operation.
@@ -112,13 +113,12 @@ The agent targets the existing resources explicitly configured in its own file;
 it never discovers or imports another deployment's outputs. The two workflows do
 not share parameter files or local azd state.
 
-Both foundation stages use repository secrets `AZURE_CLIENT_ID`,
-`AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`. Keep the protected
-`fibey-foundation` environment as a deployment approval gate only; remove
-same-name Azure environment secrets so they cannot override repository secrets.
-Configure OIDC trust for both Build's repository/ref subject and Deploy's
-environment subject. The agent continues using the protected `fibey-agent`
-environment and its own Azure authentication secrets.
+Both foundation stages authenticate through the `fibey-foundation` GitHub
+Environment using OIDC. Configure `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and
+`AZURE_SUBSCRIPTION_ID` as environment or repository secrets; environment
+secrets take precedence. Configure environment-subject federation and protect
+the environment with appropriate reviewers and branch restrictions. The agent
+continues using the `fibey-agent` environment and its own Azure authentication.
 Foundation uses official login, deployment, azd setup, and artifact actions
 directly. KB setup is explicitly opt-in locally, including after local azd
 provisioning. Toolbox promotion uses native azd commands in the postdeploy hook.

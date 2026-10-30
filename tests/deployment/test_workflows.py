@@ -33,10 +33,10 @@ class WorkflowTests(unittest.TestCase):
         build = workflow["jobs"]["build"]
         deploy = workflow["jobs"]["deploy"]
         self.assertEqual(deploy["needs"], "build")
-        self.assertEqual(deploy["environment"], "fibey-foundation")
 
         for job, operation in ((build, "whatIf"), (deploy, "create")):
             with self.subTest(operation=operation):
+                self.assertEqual(job.get("environment"), "fibey-foundation")
                 self.assertEqual(job["permissions"]["id-token"], "write")
                 login = find_action(job["steps"], "Azure/login@")
                 for name in ("client", "tenant", "subscription"):
