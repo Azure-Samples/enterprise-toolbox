@@ -121,4 +121,10 @@ jobs:
         working-directory: foundation
         env:
           AZURE_ENV_NAME: ${{ steps.infrastructure.outputs.AZURE_ENV_NAME }}
-        run: azd deploy fibey-toolbox --no-prompt
+          FOUNDRY_PROJECT_ENDPOINT: ${{ steps.infrastructure.outputs.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ steps.infrastructure.outputs.AZURE_AI_PROJECT_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          : "${FOUNDRY_PROJECT_ENDPOINT:?Foundation deployment did not output FOUNDRY_PROJECT_ENDPOINT}"
+          : "${AZURE_AI_PROJECT_ENDPOINT:?Foundation deployment did not output AZURE_AI_PROJECT_ENDPOINT}"
+          azd deploy fibey-toolbox --no-prompt

@@ -227,6 +227,10 @@ cleanup step. Local azd state remains on your machine.
 The official Azure action owns ARM what-if, deployment, diagnostics, and output
 capture. A short inline CLI handoff installs the toolbox extension and bulk-loads
 native deployment outputs into azd; it does not duplicate ARM parameter validation.
+The toolbox deploy step also passes the Bicep `FOUNDRY_PROJECT_ENDPOINT` and
+`AZURE_AI_PROJECT_ENDPOINT` outputs directly as process environment variables,
+so endpoint resolution does not depend on azd environment discovery on a clean
+runner. Missing endpoint outputs fail the step before toolbox deployment.
 The [toolbox postdeploy hook](../foundation/azure.yaml) uses native azd commands
 to publish the numeric version from `TOOLBOX_FIBEY_TOOLBOX_MCP_ENDPOINT` and verify
 the default. It uses the endpoint written by this deployment, not the latest

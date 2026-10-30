@@ -78,7 +78,7 @@ class WorkflowTests(unittest.TestCase):
         handoff = next(i for i, step in enumerate(steps) if "ARM_OUTPUTS" in step.get("env", {}))
         toolbox = next(
             i for i, step in enumerate(steps)
-            if step.get("run") == "azd deploy fibey-toolbox --no-prompt"
+            if "azd deploy fibey-toolbox --no-prompt" in step.get("run", "")
         )
         self.assertLess(infrastructure, handoff)
         self.assertLess(handoff, toolbox)
@@ -90,6 +90,11 @@ class WorkflowTests(unittest.TestCase):
             steps[toolbox]["env"]["AZURE_ENV_NAME"],
             "${{ steps.infrastructure.outputs.AZURE_ENV_NAME }}",
         )
+        for endpoint in ("FOUNDRY_PROJECT_ENDPOINT", "AZURE_AI_PROJECT_ENDPOINT"):
+            self.assertEqual(
+                steps[toolbox]["env"][endpoint],
+                "${{ steps.infrastructure.outputs." + endpoint + " }}",
+            )
         self.assertNotIn("setup-knowledge-base.sh", "\n".join(step.get("run", "") for step in steps))
 
     def test_foundation_artifact_restores_relative_dependencies(self) -> None:

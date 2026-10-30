@@ -193,6 +193,49 @@ class ScriptTests(unittest.TestCase):
                     settings = dict(item.split("=", 1) for item in calls[-1][2:-4])
                     self.assertEqual(settings, outputs)
 
+    def test_foundation_toolbox_uses_project_endpoint_outputs(self) -> None:
+        workflow = yaml.load(
+            (ROOT / ".github/workflows/deploy-foundation.yml").read_text(encoding="utf-8"),
+            Loader=yaml.BaseLoader,
+        )
+        step = next(
+            step for step in workflow["jobs"]["deploy"]["steps"]
+            if "azd deploy fibey-toolbox --no-prompt" in step.get("run", "")
+        )
+        endpoint = "https://example.services.ai.azure.com/api/projects/test"
+        outputs = {
+            "AZURE_ENV_NAME": "fibey-test",
+            "FOUNDRY_PROJECT_ENDPOINT": endpoint,
+            "AZURE_AI_PROJECT_ENDPOINT": endpoint,
+        }
+        deploy_env = {
+            key: outputs[value.removeprefix("${{ steps.infrastructure.outputs.").removesuffix(" }}")]
+            for key, value in step["env"].items()
+        }
+        self._mock_azd("""
+            if args != ["deploy", "fibey-toolbox", "--no-prompt"]:
+                raise SystemExit(f"Unexpected azd command: {args}")
+            for key in ("FOUNDRY_PROJECT_ENDPOINT", "AZURE_AI_PROJECT_ENDPOINT"):
+                if os.environ.get(key) != os.environ["EXPECTED_PROJECT_ENDPOINT"]:
+                    raise SystemExit(f"Incorrect project endpoint: {key}")
+        """)
+        for missing in ("", "FOUNDRY_PROJECT_ENDPOINT", "AZURE_AI_PROJECT_ENDPOINT"):
+            with self.subTest(missing=missing or "none"):
+                self.log.unlink(missing_ok=True)
+                env = {**deploy_env, **({missing: ""} if missing else {})}
+                result = self._run(
+                    ["bash", "-c", step["run"]],
+                    EXPECTED_PROJECT_ENDPOINT=endpoint,
+                    **env,
+                )
+                if missing:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(f"Foundation deployment did not output {missing}", result.stderr)
+                    self.assertFalse(self.log.exists())
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(self._calls(), [["deploy", "fibey-toolbox", "--no-prompt"]])
+
     def test_toolbox_publishes_the_deployed_version(self) -> None:
         hook = self._toolbox_hook()
         result = self._run(
