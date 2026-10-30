@@ -37,6 +37,7 @@ class SelectChangedPathsTests(unittest.TestCase):
             "agent/azure.yaml",
             "src/fibey/agent/hosted.py",
             ".dockerignore",
+            "Dockerfile",
             "Dockerfile.agent",
             "pyproject.toml",
             "uv.lock",
@@ -47,11 +48,19 @@ class SelectChangedPathsTests(unittest.TestCase):
                 self.assertFalse(selected["foundation"])
                 self.assertTrue(selected["configuration"])
 
+    def test_selects_ui_for_frontend_and_container_build_inputs(self) -> None:
+        selected = select_groups(["ui/Dockerfile"])
+        self.assertTrue(selected["ui"])
+        self.assertTrue(selected["configuration"])
+        self.assertFalse(selected["foundation"])
+        self.assertFalse(selected["agent"])
+
     def test_test_changes_select_every_validation_group(self) -> None:
         selected = select_groups(["tests/deployment/test_load_foundation_context.py"])
         self.assertTrue(selected["workflows"])
         self.assertTrue(selected["foundation"])
         self.assertTrue(selected["agent"])
+        self.assertTrue(selected["ui"])
         self.assertTrue(selected["configuration"])
 
     def test_parameter_changes_select_only_the_owning_lifecycle(self) -> None:
@@ -60,10 +69,11 @@ class SelectChangedPathsTests(unittest.TestCase):
                 selected = select_groups([f"{lifecycle}/parameters.json"])
                 self.assertTrue(selected[lifecycle])
                 self.assertFalse(selected["agent" if lifecycle == "foundation" else "foundation"])
+                self.assertFalse(selected["ui"])
                 self.assertTrue(selected["configuration"])
 
     def test_unrelated_changes_still_produce_a_stable_successful_check(self) -> None:
-        selected = select_groups(["ui/src/App.tsx", "docs/deployment.md"])
+        selected = select_groups(["docs/deployment.md"])
         self.assertFalse(any(selected.values()))
 
 

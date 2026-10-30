@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "fibey-ent"
+    },
+    "registryName": {
+      "value": "acrfibeyentlls4qn3t"
+    },
+    "containerAppsEnvironmentName": {
+      "value": "fibey-ent-services-cae"
+    },
+    "registryIdentityName": {
+      "value": "fibey-ent-services-acr-pull"
+    },
+    "foundryAccountName": {
+      "value": "ai-account-kdw352hfozmxw"
+    },
+    "foundryProjectName": {
+      "value": "fibey-project"
+    },
+    "hostedAgentEndpoint": {
+      "value": "https://ai-account-kdw352hfozmxw.services.ai.azure.com/api/projects/fibey-project"
+    },
+    "hostedAgentName": {
+      "value": "fibey-agent"
+    },
+    "imageTag": {
+      "value": "replace-at-deploy"
+    }
+  }
+}

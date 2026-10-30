@@ -18,5 +18,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 #   GATEWAY_HOST=<gateway-fqdn>
 ENV GATEWAY_URL=http://localhost:8080/api/
 ENV GATEWAY_HOST=localhost
+# Substitute only the gateway settings so Nginx variables such as $uri remain intact.
+ENV NGINX_ENVSUBST_FILTER=^(GATEWAY_URL|GATEWAY_HOST)$
 
 EXPOSE 80
