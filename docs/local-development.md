@@ -18,6 +18,20 @@ This will:
 2. Install UI dependencies in `ui/`
 3. Copy `.env.example` to `.env` if needed
 
+It does not configure Azure or update the knowledge base unless explicitly
+requested:
+
+```bash
+./scripts/setup.sh --setup-knowledge-base
+```
+
+This option also runs the dependency setup above. It requires an existing
+foundation, Azure CLI authentication and permissions, and a configured local
+foundation azd environment or equivalent environment variables. Local
+`azd provision` and `azd up` do not run knowledge-base setup automatically. See
+[FoundryIQ knowledge-base setup](deployment.md#foundryiq-knowledge-base-setup)
+for the prerequisites and instructions for CI-created resources.
+
 ## Running the main app
 
 ### Gateway + UI
@@ -91,7 +105,9 @@ python -m http.server 8003
 
 ### FoundryIQ knowledge base content
 
-The markdown documents under `services/foundry-iq-docs/docs/` are **not** served by the local app. Upload them to blob storage and ingest them into FoundryIQ separately.
+The markdown documents under `services/foundry-iq-docs/docs/` are **not** served
+by the local app. Run the optional knowledge-base setup after provisioning and
+when documents change. The foundation workflow does not upload or index them.
 
 ## Environment Variables
 

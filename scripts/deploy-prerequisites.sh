@@ -2,7 +2,7 @@
 set -euo pipefail
 
 workspace="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-parameter_file="${PARAMETER_FILE:-$workspace/foundation/parameters.json}"
+parameter_file="${PARAMETER_FILE:-$workspace/foundation/infra/main.parameters.json}"
 template_file="$workspace/services/infra/main.bicep"
 subscription_id="${AZURE_SUBSCRIPTION_ID:?AZURE_SUBSCRIPTION_ID is required}"
 
@@ -24,9 +24,9 @@ if [[ "$active_subscription_id" != "$subscription_id" ]]; then
   exit 1
 fi
 
-environment_name="$(jq -er '.AZURE_ENV_NAME | select(type == "string" and length > 0)' "$parameter_file")"
-location="$(jq -er '.AZURE_LOCATION | select(type == "string" and length > 0)' "$parameter_file")"
-resource_group="${AZURE_RESOURCE_GROUP:-$(jq -r '.AZURE_RESOURCE_GROUP // empty' "$parameter_file")}"
+environment_name="$(jq -er '.parameters.environmentName.value | select(type == "string" and length > 0)' "$parameter_file")"
+location="$(jq -er '.parameters.location.value | select(type == "string" and length > 0)' "$parameter_file")"
+resource_group="${AZURE_RESOURCE_GROUP:-$(jq -r '.parameters.resourceGroupName.value // empty' "$parameter_file")}"
 resource_group="${resource_group:-rg-$environment_name}"
 image_tag="${IMAGE_TAG:-$(git -C "$workspace" rev-parse --short=12 HEAD)-$(date -u +%Y%m%d%H%M%S)}"
 
@@ -184,7 +184,7 @@ trap cleanup EXIT
 if ! jq \
   --arg inventory_url "$inventory_url" \
   --arg work_orders_url "$work_orders_url" \
-  '.INVENTORY_MCP_URL = $inventory_url | .WORK_ORDERS_API_URL = $work_orders_url' \
+  '.parameters.inventoryMcpUrl.value = $inventory_url | .parameters.workOrdersApiUrl.value = $work_orders_url' \
   "$parameter_file" > "$temporary_parameter_file"; then
   echo "Failed to update service URLs in $parameter_file." >&2
   exit 1

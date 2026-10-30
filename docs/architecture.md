@@ -121,7 +121,7 @@ services/
 #### `services/foundry-iq-docs/`
 - Source markdown files for FoundryIQ knowledge retrieval
 - Full retrieval pipeline: Documents → Blob Storage → AI Search Indexer → Index → Knowledge Source → Knowledge Base → MCP endpoint → Foundry connection
-- Knowledge sources and knowledge bases are created through the Azure AI Search REST API using `2026-04-01`
+- Knowledge sources and knowledge bases are created through the Azure AI Search REST API using `2026-05-01-preview`
 - Uploaded to Azure Blob Storage separately from app deployment
 
 ## Container Apps topology
