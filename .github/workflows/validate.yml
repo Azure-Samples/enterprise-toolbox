@@ -66,6 +66,14 @@ jobs:
           filter_mode: nofilter
           fail_level: error
           path: scripts/deploy-prerequisites.sh
+      - name: Check Fibey UI/gateway deployment script
+        if: steps.changes.outputs.workflows == 'true'
+        uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
+        with:
+          reporter: local
+          filter_mode: nofilter
+          fail_level: error
+          path: scripts/deploy-fibey-ui-gateway.sh
       - name: Check foundation shell scripts
         if: steps.changes.outputs.foundation == 'true'
         uses: reviewdog/action-shellcheck@6cd04609641f91bbd2f9f5f21832f17061c9dbf8 # v1, ShellCheck 0.11.0
@@ -84,6 +92,20 @@ jobs:
           az bicep install --version v0.48.1
           az bicep build --file foundation/infra/main.bicep --stdout > /dev/null
           az bicep build --file services/infra/main.bicep --stdout > /dev/null
+          az bicep build --file services/infra/fibey-ui-gateway.bicep --stdout > /dev/null
+      - name: Build Fibey React frontend
+        if: steps.changes.outputs.ui == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install and build Fibey React frontend
+        if: steps.changes.outputs.ui == 'true'
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
       - name: Check agent dependency lock and Python syntax
         if: steps.changes.outputs.agent == 'true'
         run: |
@@ -94,6 +116,9 @@ jobs:
       - name: Build agent image without pushing
         if: steps.changes.outputs.agent == 'true'
         run: docker build --pull --file Dockerfile.agent --tag fibey-agent-ci-check .
+      - name: Build gateway image without pushing
+        if: steps.changes.outputs.agent == 'true'
+        run: docker build --pull --file Dockerfile --tag fibey-gateway-ci-check .
       - name: Verify agent modules import without starting the server
         if: steps.changes.outputs.agent == 'true'
         run: >-

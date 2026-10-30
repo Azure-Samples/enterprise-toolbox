@@ -97,6 +97,10 @@ def _get_hosted_token() -> str:
 async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None]:
     """Proxy to the Foundry-hosted agent and translate Responses API streaming
     into the gateway SSE format expected by the UI."""
+    # Flush an initial event while identity and hosted-agent connections start.
+    # This keeps the UI's reverse proxy from treating the SSE stream as idle.
+    yield _sse("connected", {"status": "connecting"})
+
     endpoint = HOSTED_AGENT_ENDPOINT
     if not endpoint:
         yield _sse("error", {"message": "HOSTED_AGENT_ENDPOINT not configured"})

@@ -39,7 +39,10 @@ class ServicesInfrastructureTests(unittest.TestCase):
         script = (ROOT / "scripts/deploy-prerequisites.sh").read_text(encoding="utf-8")
         self.assertIn('az role assignment list --scope "$registry_resource_id" --output json', script)
         self.assertIn("identity: registryIdentityResourceId", container_app)
-        self.assertIn("type: 'UserAssigned'", container_app)
+        self.assertIn(
+            "type: enableSystemAssignedIdentity ? 'SystemAssigned,UserAssigned' : 'UserAssigned'",
+            container_app,
+        )
         self.assertNotIn("registryPassword", container_app)
         self.assertIn("roleDefinitionId: acrPullRoleDefinitionId", services)
         self.assertIn("minReplicas: 0", services)
@@ -72,6 +75,49 @@ class ServicesInfrastructureTests(unittest.TestCase):
             for path in (ROOT / ".github/workflows").glob("deploy-*.yml")
         )
         self.assertNotIn("deploy-prerequisites.sh", deployment_workflows)
+
+    def test_ui_gateway_deployment_is_isolated_and_routes_through_private_gateway(self) -> None:
+        template = (ROOT / "services/infra/fibey-ui-gateway.bicep").read_text(encoding="utf-8")
+        parameters = (ROOT / "services/infra/fibey-ui-gateway.parameters.json").read_text(
+            encoding="utf-8"
+        )
+        container_app = (ROOT / "services/infra/modules/container-app.bicep").read_text(
+            encoding="utf-8"
+        )
+        script = (ROOT / "scripts/deploy-fibey-ui-gateway.sh").read_text(encoding="utf-8")
+        ui_dockerfile = (ROOT / "ui/Dockerfile").read_text(encoding="utf-8")
+        nginx_config = (ROOT / "ui/nginx.conf").read_text(encoding="utf-8")
+        gateway_api = (ROOT / "src/fibey/gateway/api_server.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("module gateway 'modules/container-app.bicep'", template)
+        self.assertIn("module ui 'modules/container-app.bicep'", template)
+        self.assertNotIn("inventory-mcp", template)
+        self.assertNotIn("work-orders", template)
+        self.assertIn("externalIngress: false", template)
+        self.assertIn("externalIngress: true", template)
+        self.assertIn("readinessPath: '/api/health'", template)
+        self.assertIn("readinessPath: '/'", template)
+        self.assertIn("'https://${gateway.outputs.fqdn}/api/'", template)
+        self.assertIn("foundryAgentConsumerRoleDefinitionId", template)
+        self.assertIn("scope: foundryProject", template)
+        self.assertIn('"value": "fibey-ent"', parameters)
+        self.assertIn("rg-fibey-ent", script)
+        self.assertIn("what-if", script)
+        self.assertIn('if [[ "$operation" == "plan" ]]', script)
+        self.assertIn("az acr build", script)
+        self.assertIn("Fibey UI URL:", script)
+        self.assertIn("Gateway health via UI proxy:", script)
+        deployment_workflows = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (ROOT / ".github/workflows").glob("deploy-*.yml")
+        )
+        self.assertNotIn("deploy-fibey-ui-gateway.sh", deployment_workflows)
+        self.assertIn("NGINX_ENVSUBST_FILTER=^(GATEWAY_URL|GATEWAY_HOST)$", ui_dockerfile)
+        self.assertIn("proxy_buffering off;", nginx_config)
+        self.assertIn("proxy_read_timeout 600s;", nginx_config)
+        self.assertIn('yield _sse("connected", {"status": "connecting"})', gateway_api)
 
 
 if __name__ == "__main__":

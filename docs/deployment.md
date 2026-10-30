@@ -1,14 +1,15 @@
 # Deployment
 
-## Two independent deployment lifecycles
+## Deployment lifecycles
 
-Deployment is split into two independent azd projects, driven by separate
-GitHub Actions workflows.
+Foundation and hosted-agent deployment are split into independent azd projects.
+The UI and gateway have a third, isolated Container Apps deployment lifecycle.
 
 | Stage | Folder | Owns | Deploy with |
 |-------|--------|------|-------------|
 | 1. Foundation | [`foundation/`](../foundation) | Foundry account, project, model, ACR, App Insights, AI Search, Storage, knowledge base + connection, and the **Foundry Toolbox** | `azd provision`, then `azd deploy fibey-toolbox` |
 | 2. Agent | [`agent/`](../agent) | The hosted `fibey-agent` only | `azd deploy fibey-agent` |
+| 3. UI and gateway | [`ui/`](../ui), [`src/fibey/gateway/`](../src/fibey/gateway) | React frontend and private FastAPI gateway in the existing Container Apps environment | [Operator-invoked script](../scripts/deploy-fibey-ui-gateway.sh) |
 
 The foundation can exist without an agent. The toolbox is versioned
 independently of the agent: a toolbox deployment does not redeploy the agent,
@@ -56,6 +57,37 @@ whose promotion hook verified the active default. After an agent deployment,
 the workflow checks the hosted-agent status and issues a new-session,
 read-only inventory smoke prompt for `FIB-002`; it explicitly does not request
 work-order creation or updates.
+
+### Deploy UI and gateway with the script
+
+The UI and gateway are deployed only through the operator-invoked
+[`scripts/deploy-fibey-ui-gateway.sh`](../scripts/deploy-fibey-ui-gateway.sh);
+there is no GitHub Actions deployment workflow for them. Sign in with Azure CLI
+and select the subscription named by [`agent/parameters.json`](../agent/parameters.json),
+then run these commands from the repository root:
+
+```bash
+bash scripts/deploy-fibey-ui-gateway.sh plan
+bash scripts/deploy-fibey-ui-gateway.sh deploy
+```
+
+The script reads its explicit target settings from
+[`services/infra/fibey-ui-gateway.parameters.json`](../services/infra/fibey-ui-gateway.parameters.json)
+and uses the subscription and Foundry project already named by
+[`agent/parameters.json`](../agent/parameters.json). `plan` (the default) runs ARM
+what-if only. `deploy` builds unique `fibey-ui` and `fibey-gateway` tags in the
+existing ACR, then deploys only those two Container Apps and a
+`Foundry Agent Consumer` assignment for the gateway's system identity at the
+existing Foundry project scope. This is the least-privilege permission needed
+for the gateway to invoke the already deployed hosted agent; no agent,
+inventory, work-orders, foundation, or shared environment resources are
+provisioned by this script.
+
+The UI is the only externally accessible app. Nginx in the UI container
+proxies `/api/*` to the gateway's internal Container Apps endpoint; the
+gateway's health endpoint is checked through that same proxy after deployment.
+Both apps scale to zero while idle. PR validation still checks the UI build,
+deployment script, and infrastructure without deploying them.
 
 ### Deploy inventory and work-orders services separately
 

@@ -31,6 +31,15 @@ param minReplicas int = 1
 @description('Maximum replica count for the Container App.')
 param maxReplicas int = 3
 
+@description('Readiness endpoint exposed by the container.')
+param readinessPath string = '/health'
+
+@description('Whether the Container App is reachable from outside its Container Apps environment.')
+param externalIngress bool = true
+
+@description('Whether to attach a system-assigned managed identity in addition to the registry identity.')
+param enableSystemAssignedIdentity bool = false
+
 @description('Tags applied to the Container App.')
 param tags object = {}
 
@@ -44,7 +53,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   location: location
   tags: appTags
   identity: {
-    type: 'UserAssigned'
+    type: enableSystemAssignedIdentity ? 'SystemAssigned,UserAssigned' : 'UserAssigned'
     userAssignedIdentities: {
       '${registryIdentityResourceId}': {}
     }
@@ -54,7 +63,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: true
+        external: externalIngress
         targetPort: targetPort
         transport: 'auto'
       }
@@ -75,7 +84,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               type: 'Readiness'
               httpGet: {
-                path: '/health'
+                path: readinessPath
                 port: targetPort
                 scheme: 'HTTP'
               }
@@ -102,3 +111,6 @@ output id string = containerApp.id
 
 @description('Fully qualified domain name of the Container App ingress endpoint.')
 output fqdn string = containerApp.properties.configuration.ingress.fqdn
+
+@description('Principal ID of the Container App system-assigned managed identity.')
+output principalId string = enableSystemAssignedIdentity ? containerApp.identity.principalId! : ''

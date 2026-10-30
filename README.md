@@ -82,10 +82,14 @@ keep those lifecycles separate:
   toolbox version, even if the toolbox definition is unchanged.
 - [Agent workflow](.github/workflows/deploy-agent.yml): independently preflight
   or deploy only the hosted `fibey-agent`. Preflight is the default.
+- [UI and gateway script](scripts/deploy-fibey-ui-gateway.sh): manually preview or
+  deploy only the React UI and FastAPI gateway into the existing Fibey Container
+  Apps environment. The gateway is private to the environment; the UI Nginx
+  proxy forwards `/api/*` to it.
 - [PR validation](.github/workflows/validate.yml): runs automatically without
   Azure credentials.
 
-Each deployment owns its own parameter file, selected by its `parameter_file` input:
+Each azd deployment owns its own parameter file, selected by its `parameter_file` input:
 
 - [`foundation/parameters.json`](foundation/parameters.json): infrastructure,
   model/version/capacity and external inventory/work-orders URLs. The foundation

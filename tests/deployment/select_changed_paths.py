@@ -11,7 +11,12 @@ def select_groups(paths: Iterable[str]) -> dict[str, bool]:
     )
     test_changes = any(path.startswith("tests/deployment/") for path in changed)
     workflows = test_changes or any(
-        path.startswith(".github/") or path == "scripts/deploy-prerequisites.sh"
+        path.startswith(".github/")
+        or path
+        in {
+            "scripts/deploy-prerequisites.sh",
+            "scripts/deploy-fibey-ui-gateway.sh",
+        }
         for path in changed
     )
     foundation = test_changes or any(
@@ -20,14 +25,23 @@ def select_groups(paths: Iterable[str]) -> dict[str, bool]:
     )
     agent = test_changes or any(
         path.startswith(("agent/", "src/fibey/"))
-        or path in {".dockerignore", "Dockerfile.agent", "pyproject.toml", "uv.lock"}
+        or path
+        in {
+            ".dockerignore",
+            "Dockerfile",
+            "Dockerfile.agent",
+            "pyproject.toml",
+            "uv.lock",
+        }
         for path in changed
     )
+    ui = test_changes or any(path.startswith("ui/") for path in changed)
     return {
         "workflows": workflows,
         "foundation": foundation,
         "agent": agent,
-        "configuration": workflows or foundation or agent,
+        "ui": ui,
+        "configuration": workflows or foundation or agent or ui,
     }
 
 
