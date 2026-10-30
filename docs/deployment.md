@@ -227,6 +227,12 @@ cleanup step. Local azd state remains on your machine.
 The official Azure action owns ARM what-if, deployment, diagnostics, and output
 capture. A short inline CLI handoff installs the toolbox extension and bulk-loads
 native deployment outputs into azd; it does not duplicate ARM parameter validation.
+GitHub output lookups are case-insensitive, but the serialized output object can
+contain mixed-case keys such as `inventorY_MCP_URL`. The handoff normalizes
+underscore-separated environment-variable names to uppercase before importing
+them into azd, where variable names are case-sensitive. Camel-case helper outputs
+such as `searchServiceName` retain their names. This preserves the inventory,
+work-orders, and knowledge-base values used by the toolbox manifest.
 The toolbox deploy step also passes the Bicep `FOUNDRY_PROJECT_ENDPOINT` and
 `AZURE_AI_PROJECT_ENDPOINT` outputs directly as process environment variables,
 so endpoint resolution does not depend on azd environment discovery on a clean

@@ -113,7 +113,11 @@ jobs:
           azd config set auth.useAzCliAuth true
           azd env new "$ENVIRONMENT_NAME" --no-prompt \
             --subscription "$AZURE_SUBSCRIPTION_ID" --location "$DEPLOYMENT_LOCATION" --cwd foundation > /dev/null
-          settings_text="$(jq -er 'to_entries[] | "\(.key)=\(.value)"' <<< "$ARM_OUTPUTS")"
+          # Serialized action output casing differs from case-sensitive azd variable names.
+          settings_text="$(jq -er '
+            to_entries[]
+            | "\(.key | if contains("_") then ascii_upcase else . end)=\(.value)"
+          ' <<< "$ARM_OUTPUTS")"
           settings=()
           while IFS= read -r setting; do settings+=("$setting"); done <<< "$settings_text"
           azd env set "${settings[@]}" --environment "$ENVIRONMENT_NAME" --cwd foundation > /dev/null

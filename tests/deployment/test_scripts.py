@@ -159,19 +159,41 @@ class ScriptTests(unittest.TestCase):
         outputs = {
             "AZURE_ENV_NAME": "fibey-test",
             "AZURE_LOCATION": "eastus2",
+            "FOUNDRY_PROJECT_ENDPOINT": "https://example.services.ai.azure.com/api/projects/test",
+            "AZURE_AI_PROJECT_ENDPOINT": "https://example.services.ai.azure.com/api/projects/test",
             "KB_MCP_URL": "https://kb.example/mcp",
+            "KB_CONNECTION_NAME": "kb-test",
             "APPLICATIONINSIGHTS_CONNECTION_STRING": "SECRET=literal-$HOME",
             "INVENTORY_MCP_URL": "https://inventory.example/mcp",
             "WORK_ORDERS_API_URL": "https://orders.example",
+            "searchServiceName": "test-search",
         }
-
-        for failure in ("", "new", "set", "invalid-json"):
-            with self.subTest(failure=failure or "none"):
+        mixed_outputs = {
+            "azurE_ENV_NAME": outputs["AZURE_ENV_NAME"],
+            "azurE_LOCATION": outputs["AZURE_LOCATION"],
+            "foundrY_PROJECT_ENDPOINT": outputs["FOUNDRY_PROJECT_ENDPOINT"],
+            "azurE_AI_PROJECT_ENDPOINT": outputs["AZURE_AI_PROJECT_ENDPOINT"],
+            "kB_MCP_URL": outputs["KB_MCP_URL"],
+            "kB_CONNECTION_NAME": outputs["KB_CONNECTION_NAME"],
+            "applicationinsightS_CONNECTION_STRING": outputs["APPLICATIONINSIGHTS_CONNECTION_STRING"],
+            "inventorY_MCP_URL": outputs["INVENTORY_MCP_URL"],
+            "worK_ORDERS_API_URL": outputs["WORK_ORDERS_API_URL"],
+            "searchServiceName": outputs["searchServiceName"],
+        }
+        cases = (
+            (outputs, ""),
+            (mixed_outputs, ""),
+            (outputs, "new"),
+            (outputs, "set"),
+            (outputs, "invalid-json"),
+        )
+        for action_outputs, failure in cases:
+            with self.subTest(failure=failure or "none", keys=list(action_outputs)):
                 self.log.unlink(missing_ok=True)
                 result = self._run(
                     ["bash", "-c", step["run"]],
                     cwd=self.root,
-                    ARM_OUTPUTS="{" if failure == "invalid-json" else json.dumps(outputs),
+                    ARM_OUTPUTS="{" if failure == "invalid-json" else json.dumps(action_outputs),
                     ENVIRONMENT_NAME="fibey-test",
                     DEPLOYMENT_LOCATION="eastus2",
                     AZURE_SUBSCRIPTION_ID="sub-test",
@@ -192,6 +214,18 @@ class ScriptTests(unittest.TestCase):
                     )
                     settings = dict(item.split("=", 1) for item in calls[-1][2:-4])
                     self.assertEqual(settings, outputs)
+                    manifest = (ROOT / "foundation/azure.yaml").read_text(encoding="utf-8")
+                    rendered = re.sub(
+                        r"\$\{([A-Z_]+)\}", lambda match: settings[match[1]], manifest,
+                    )
+                    tools = yaml.safe_load(rendered)["services"]["fibey-toolbox"]["tools"]
+                    self.assertEqual(tools[1]["server_url"], outputs["INVENTORY_MCP_URL"])
+                    self.assertEqual(
+                        tools[2]["openapi"]["spec"]["servers"][0]["url"],
+                        outputs["WORK_ORDERS_API_URL"],
+                    )
+                    self.assertEqual(tools[3]["server_url"], outputs["KB_MCP_URL"])
+                    self.assertEqual(tools[3]["project_connection_id"], outputs["KB_CONNECTION_NAME"])
 
     def test_foundation_toolbox_uses_project_endpoint_outputs(self) -> None:
         workflow = yaml.load(

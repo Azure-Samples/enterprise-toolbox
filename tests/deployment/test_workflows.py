@@ -131,6 +131,11 @@ class WorkflowTests(unittest.TestCase):
                 "azure.yaml",
             ):
                 self.assertTrue((deploy / path).is_file(), path)
+                self.assertEqual(
+                    (deploy / path).read_bytes(),
+                    (ROOT / "foundation" / path).read_bytes(),
+                    path,
+                )
             self.assertFalse((deploy / "infra/main.json").exists())
             self.assertFalse((deploy / "scripts").exists())
 
