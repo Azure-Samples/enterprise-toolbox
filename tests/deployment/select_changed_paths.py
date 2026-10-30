@@ -16,6 +16,7 @@ def select_groups(paths: Iterable[str]) -> dict[str, bool]:
         in {
             "scripts/deploy-prerequisites.sh",
             "scripts/deploy-fibey-ui-gateway.sh",
+            "scripts/setup.sh",
         }
         for path in changed
     )

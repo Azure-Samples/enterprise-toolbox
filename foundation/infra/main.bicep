@@ -21,10 +21,10 @@ param aiDeploymentsLocation string = ''
 param searchServiceLocation string = ''
 
 @description('Id of the user or app to assign application roles.')
-param principalId string = ''
+param principalId string = deployer().objectId
 
 @description('Principal type of user or app.')
-param principalType string = 'User'
+param principalType string = empty(deployer().?userPrincipalName) ? 'ServicePrincipal' : 'User'
 
 @description('Optional salt to diversify resource names across project recreations.')
 param resourceTokenSalt string = ''
@@ -75,6 +75,14 @@ param knowledgeBaseName string = 'fibey-field-ops-kb'
 @description('Name of the AI Search index for FoundryIQ documents.')
 param searchIndexName string = 'foundry-iq-docs-index'
 
+@minLength(1)
+@description('HTTPS endpoint of the existing Inventory MCP service.')
+param inventoryMcpUrl string
+
+@minLength(1)
+@description('HTTPS endpoint of the existing Work Orders API.')
+param workOrdersApiUrl string
+
 var tags = {
   'azd-env-name': environmentName
 }
@@ -119,6 +127,8 @@ module resources 'resources.bicep' = {
 }
 
 // Resource group and Foundry outputs consumed by the azd AI agent extension
+output AZURE_ENV_NAME string = environmentName
+output AZURE_LOCATION string = location
 output AZURE_TENANT_ID string = tenant().tenantId
 output AZURE_RESOURCE_GROUP string = resolvedResourceGroupName
 output AZURE_AI_ACCOUNT_ID string = resources.outputs.aiAccountId
@@ -141,6 +151,8 @@ output TOOLBOX_MCP_URL string = resources.outputs.toolboxMcpUrl
 output KB_NAME string = knowledgeBaseName
 output KB_MCP_URL string = resources.outputs.knowledgeBaseMcpEndpoint
 output KB_CONNECTION_NAME string = resources.outputs.knowledgeBaseConnectionName
+output INVENTORY_MCP_URL string = inventoryMcpUrl
+output WORK_ORDERS_API_URL string = workOrdersApiUrl
 
 // Knowledge base resources
 output AZURE_SEARCH_ENDPOINT string = resources.outputs.searchServiceEndpoint

@@ -3,73 +3,70 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "environmentName": {
-      "value": "${AZURE_ENV_NAME}"
+      "value": "fibey-ent"
     },
     "resourceGroupName": {
-      "value": "${AZURE_RESOURCE_GROUP=}"
+      "value": ""
     },
     "location": {
-      "value": "${AZURE_LOCATION}"
+      "value": "eastus2"
     },
     "aiDeploymentsLocation": {
-      "value": "${AZURE_AI_DEPLOYMENTS_LOCATION=}"
+      "value": ""
     },
     "searchServiceLocation": {
-      "value": "${AZURE_SEARCH_LOCATION=}"
-    },
-    "principalId": {
-      "value": "${AZURE_PRINCIPAL_ID}"
-    },
-    "principalType": {
-      "value": "${AZURE_PRINCIPAL_TYPE=User}"
+      "value": "centralus"
     },
     "resourceTokenSalt": {
-      "value": "${AZD_RESOURCE_TOKEN_SALT=}"
+      "value": ""
     },
     "aiFoundryResourceName": {
-      "value": "${AZURE_AI_ACCOUNT_NAME=}"
+      "value": ""
     },
     "aiFoundryProjectName": {
-      "value": "${AZURE_AI_PROJECT_NAME=fibey-project}"
+      "value": "fibey-project"
     },
     "aiProjectDeployments": {
-      "value": "${AI_PROJECT_DEPLOYMENTS=[]}"
+      "value": []
     },
     "aiProjectConnections": {
-      "value": "${AI_PROJECT_CONNECTIONS=[]}"
-    },
-    "aiProjectConnectionCredentialsJson": {
-      "value": "${AI_PROJECT_CONNECTION_CREDENTIALS={}}"
+      "value": []
     },
     "aiProjectDependentResources": {
-      "value": "${AI_PROJECT_DEPENDENT_RESOURCES=[]}"
+      "value": []
     },
     "enableHostedAgents": {
-      "value": "${ENABLE_HOSTED_AGENTS=true}"
+      "value": true
     },
     "enableCapabilityHost": {
-      "value": "${ENABLE_CAPABILITY_HOST=true}"
+      "value": true
     },
     "enableMonitoring": {
-      "value": "${ENABLE_MONITORING=true}"
+      "value": true
     },
     "foundryModel": {
-      "value": "${FOUNDRY_MODEL=gpt-4.1-mini}"
+      "value": "gpt-4.1-mini"
     },
     "foundryModelVersion": {
-      "value": "${FOUNDRY_MODEL_VERSION=2025-04-14}"
+      "value": "2025-04-14"
     },
     "foundryModelCapacity": {
-      "value": "${FOUNDRY_MODEL_CAPACITY=100}"
+      "value": 100
     },
     "toolboxName": {
-      "value": "${TOOLBOX_NAME=fibey-toolbox}"
+      "value": "fibey-toolbox"
     },
     "knowledgeBaseName": {
-      "value": "${KB_NAME=fibey-field-ops-kb}"
+      "value": "fibey-field-ops-kb"
     },
     "searchIndexName": {
-      "value": "${AZURE_SEARCH_INDEX=foundry-iq-docs-index}"
+      "value": "foundry-iq-docs-index"
+    },
+    "inventoryMcpUrl": {
+      "value": "https://fibey-ent-inventory-mcp.ashysea-fa4e3b27.eastus2.azurecontainerapps.io/mcp?api-version=v1"
+    },
+    "workOrdersApiUrl": {
+      "value": "https://fibey-ent-work-orders.ashysea-fa4e3b27.eastus2.azurecontainerapps.io"
     }
   }
 }

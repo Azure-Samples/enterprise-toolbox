@@ -444,3 +444,6 @@ dist/
 # Local Azure Developer CLI state
 /foundation/.azure/
 /agent/.azure/
+
+# Compiled foundation deployment artifacts
+/foundation/infra/main.json

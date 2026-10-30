@@ -9,11 +9,6 @@ infra:
   provider: bicep
   path: infra
   module: main
-hooks:
-  postprovision:
-    - shell: sh
-      run: ./scripts/setup-knowledge-base.sh
-      interactive: false
 services:
   fibey-toolbox:
     host: azure.ai.toolbox
@@ -24,13 +19,19 @@ services:
       KB_CONNECTION_NAME: ${KB_CONNECTION_NAME}
     description: 'Fibey Field Ops toolbox: inventory, work orders, and knowledge base.'
     hooks:
-      predeploy:
-        - shell: sh
-          run: python3 ./scripts/toolbox-version-lifecycle.py before
-          interactive: false
       postdeploy:
         - shell: sh
-          run: python3 ./scripts/toolbox-version-lifecycle.py after
+          run: |
+            set -eu
+            endpoint="$(azd env get-value TOOLBOX_FIBEY_TOOLBOX_MCP_ENDPOINT)"
+            version="$(jq -ner --arg endpoint "$endpoint" '
+              [$endpoint | capture("^https://[^/?#]+/api/projects/[^/?#]+/toolboxes/fibey-toolbox/versions/(?<version>[0-9]+)/mcp\\?api-version=v1$").version]
+              | if length == 1 then .[0] else error("Expected the deployed fibey-toolbox version endpoint") end
+            ')"
+            azd ai toolbox publish fibey-toolbox "$version" --no-prompt
+            versions="$(azd ai toolbox versions list fibey-toolbox --output json --no-prompt)"
+            printf '%s\n' "$versions" |
+              jq -e --arg version "$version" '.default_version == $version or error("The deployed toolbox version is not the default")' > /dev/null
           interactive: false
     tools:
     - type: toolbox_search_preview

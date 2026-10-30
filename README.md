@@ -35,7 +35,8 @@ The sample also ships **containerapp** and **hosted** modes — see
 - Python 3.12+
 - Node.js 20+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Azure CLI (`az`) + Azure Developer CLI (`azd`) — only needed for cloud deploy
+- Azure CLI (`az`) + Azure Developer CLI (`azd`) — needed for cloud deployment
+  and optional local knowledge-base setup
 - An Azure AI Foundry project with a deployed model and a configured Toolbox
 
 ## Quickstart (local)
@@ -76,12 +77,21 @@ Open the UI at <http://localhost:5173>.
 Cloud deployment has two independent azd projects. The GitHub Actions workflows
 keep those lifecycles separate:
 
-- [Foundation workflow](.github/workflows/deploy-foundation.yml): manually preview
-  infrastructure changes or provision the foundation and then deploy the toolbox.
-  Preview is the default. Every successful deployment creates and promotes a new
-  toolbox version, even if the toolbox definition is unchanged.
-- [Agent workflow](.github/workflows/deploy-agent.yml): independently preflight
-  or deploy only the hosted `fibey-agent`. Preflight is the default.
+- [Foundation workflow](.github/workflows/deploy-foundation.yml): manually run
+  **Build → Deploy**. Build runs an infrastructure what-if from Bicep source
+  with the official Azure deployment action and publishes that source and the
+  checked-in ARM parameter file. Deploy downloads the artifact and runs the
+  same action against those files. Both jobs use the `fibey-foundation`
+  environment, so configured approvals apply to each job. Bicep is compiled
+  in both jobs with the same pinned version. Deploy publishes/promotes a new toolbox version
+  but does not configure or refresh the knowledge base. There is no separate
+  preview operation.
+- [Agent workflow](.github/workflows/deploy-agent.yml): independently run
+  **Build → Deploy** for the hosted `fibey-agent`, using the fixed checked-in
+  agent parameters. Build validates and publishes only required source files
+  without Azure credentials. Deploy uses the `fibey-agent` environment,
+  performs one remote image build/deployment, and runs a read-only inventory
+  smoke test.
 - [UI and gateway script](scripts/deploy-fibey-ui-gateway.sh): manually preview or
   deploy only the React UI and FastAPI gateway into the existing Fibey Container
   Apps environment. The gateway is private to the environment; the UI Nginx
@@ -89,24 +99,34 @@ keep those lifecycles separate:
 - [PR validation](.github/workflows/validate.yml): runs automatically without
   Azure credentials.
 
-Each azd deployment owns its own parameter file, selected by its `parameter_file` input:
+Each workflow owns a checked-in parameter file:
 
-- [`foundation/parameters.json`](foundation/parameters.json): infrastructure,
-  model/version/capacity and external inventory/work-orders URLs. The foundation
-  workflow always resolves the principal object ID from its signed-in deployment identity.
+- [`foundation/infra/main.parameters.json`](foundation/infra/main.parameters.json):
+  standard ARM parameters for infrastructure, model/version/capacity, and external
+  inventory/work-orders URLs. Both foundation jobs use this file directly, as does local `azd provision`.
+  ARM's `deployer()` supplies the deployment principal by default.
 - [`agent/parameters.json`](agent/parameters.json): agent environment, target
   project ID/endpoint, registry connection/hostname, model name, and toolbox URL.
 
-Foundation preview/provision needs no prior Fibey resources or deployment
-outputs. The agent targets the existing resources explicitly configured in its
-own file; it never discovers or imports another deployment's outputs. The two
-workflows do not share parameter files or local azd state.
+Foundation infrastructure deployment consumes the artifact produced by Build in
+the same run. After initial provisioning, configure the knowledge base locally
+using `./scripts/setup.sh --setup-knowledge-base`; the toolbox step may fail or
+knowledge retrieval may be unavailable until that is done. See the
+[knowledge-base setup instructions](docs/deployment.md#foundryiq-knowledge-base-setup).
+The agent targets the existing resources explicitly configured in its own file;
+it never discovers or imports another deployment's outputs. The two workflows do
+not share parameter files or local azd state.
 
-Use separate protected GitHub Environments, `fibey-foundation` and `fibey-agent`,
-with OIDC federation, Azure permissions, and authentication secrets
-`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`.
-Shared setup handles OIDC and pinned tooling; generated local azd state is
-ignored rather than checked in.
+Both foundation stages authenticate through the `fibey-foundation` GitHub
+Environment using OIDC. Configure `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and
+`AZURE_SUBSCRIPTION_ID` as environment or repository secrets; environment
+secrets take precedence. Configure environment-subject federation and protect
+the environment with appropriate reviewers and branch restrictions. The agent
+continues using the `fibey-agent` environment and its own Azure authentication.
+Foundation uses official login, deployment, azd setup, and artifact actions
+directly. KB setup is explicitly opt-in locally, including after local azd
+provisioning. Toolbox promotion uses native azd commands in the postdeploy hook.
+Generated local azd state is ignored rather than checked in.
 See [docs/deployment.md](docs/deployment.md) for the workflow
 operations, required configuration, permissions, and local azd commands.
 

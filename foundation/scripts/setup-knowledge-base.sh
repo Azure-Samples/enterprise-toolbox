@@ -3,8 +3,8 @@
 # data source → index → indexer → knowledge source → knowledge base.
 #
 # The Foundry project connection (kb-<kb-name>) and Search RBAC assignments are
-# created by the Bicep templates in foundation/infra/. Runs as part of the azd
-# postprovision hook; safe to re-run (all operations are idempotent PUTs).
+# created by the Bicep templates in foundation/infra/. Run explicitly through
+# scripts/setup.sh --setup-knowledge-base after provisioning.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -41,13 +41,13 @@ FOUNDRY_MODEL="${FOUNDRY_MODEL:-$(env_value FOUNDRY_MODEL)}"
 FOUNDRY_MODEL="${FOUNDRY_MODEL:-gpt-4.1-mini}"
 
 if [ -z "$RESOURCE_GROUP" ] || [ -z "$STORAGE_ACCOUNT" ] || [ -z "$SEARCH_SERVICE" ]; then
-  echo "Could not resolve resource group, storage account, or search service from the azd environment."
-  echo "Run 'azd provision' first."
+  echo "Could not resolve resource group, storage account, or search service." >&2
+  echo "Configure the foundation azd environment or set AZURE_RESOURCE_GROUP, STORAGE_ACCOUNT, and SEARCH_SERVICE." >&2
   exit 1
 fi
 
 if [ -z "$AOAI_ENDPOINT" ]; then
-  echo "Could not resolve AZURE_OPENAI_ENDPOINT from the azd environment."
+  echo "Could not resolve AZURE_OPENAI_ENDPOINT from the environment or foundation azd environment." >&2
   exit 1
 fi
 
