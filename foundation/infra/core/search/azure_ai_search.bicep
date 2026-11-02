@@ -34,16 +34,19 @@ param connectionName string
 param location string = resourceGroup().location
 
 // Get reference to the AI Services account and project to access their managed identities
-resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+// The provider advertises these API versions before they are present in Bicep's type catalog.
+#disable-next-line BCP081
+resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   name: aiServicesAccountName
 
+  #disable-next-line BCP081
   resource aiProject 'projects' existing = {
     name: aiProjectName
   }
 }
 
 // Azure Search Service
-resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
+resource searchService 'Microsoft.Search/searchServices@2026-09-01-preview' = {
   name: resourceName
   location: location
   tags: tags
@@ -56,7 +59,7 @@ resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
   properties: {
     replicaCount: 1
     partitionCount: 1
-    hostingMode: 'default'
+    hostingMode: 'Default'
     authOptions: {
       aadOrApiKey: {
         aadAuthFailureMode: 'http401WithBearerChallenge'
@@ -71,18 +74,20 @@ resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
 }
 
 // Reference to existing Storage Account
-resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+#disable-next-line BCP081
+resource storageAccount 'Microsoft.Storage/storageAccounts@2026-09-01' existing = {
   name: last(split(storageAccountResourceId, '/'))
 }
 
 // Reference to existing Blob Service
-resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' existing = {
+#disable-next-line BCP081
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2026-09-01' existing = {
   parent: storageAccount
   name: 'default'
 }
 
 // Storage Container (create if it doesn't exist)
-resource storageContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+resource storageContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2026-06-01' = {
   parent: blobService
   name: containerName
   properties: {
@@ -93,7 +98,8 @@ resource storageContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
 // RBAC Assignments
 
 // Search needs to read from Storage
-resource searchToStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource searchToStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   name: guid(storageAccount.id, searchService.id, 'Storage Blob Data Reader', uniqueString(deployment().name))
   scope: storageAccount
   properties: {
@@ -105,7 +111,8 @@ resource searchToStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@
 }
 
 // Search needs OpenAI access (AI Services account)
-resource searchToAIServicesRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(aiServicesAccountName)) {
+#disable-next-line BCP081
+resource searchToAIServicesRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = if (!empty(aiServicesAccountName)) {
   name: guid(aiServicesAccountName, searchService.id, 'Cognitive Services OpenAI User', uniqueString(deployment().name))
   properties: {
     // GOOD
@@ -116,31 +123,34 @@ resource searchToAIServicesRoleAssignment 'Microsoft.Authorization/roleAssignmen
 }
 
 // AI Project needs Search access - Service Contributor
-resource aiServicesToSearchServiceRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+#disable-next-line BCP081
+resource aiServicesToSearchServiceRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   name: guid(searchService.id, aiServicesAccountName, aiProjectName, 'Search Service Contributor', uniqueString(deployment().name))
   scope: searchService
   properties: {
     // GOOD
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0') // Search Service Contributor
-    principalId: aiAccount::aiProject.identity.principalId
+    principalId: aiAccount::aiProject!.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // AI Project needs Search access - Index Data Contributor
-resource aiServicesToSearchDataRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+#disable-next-line BCP081
+resource aiServicesToSearchDataRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   name: guid(searchService.id, aiServicesAccountName, aiProjectName, 'Search Index Data Contributor', uniqueString(deployment().name))
   scope: searchService
   properties: {
     // GOOD
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8ebe5a00-799e-43f5-93ac-243d3dce84a7') // Search Index Data Contributor
-    principalId: aiAccount::aiProject.identity.principalId
+    principalId: aiAccount::aiProject!.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // User permissions - Search Index Data Contributor
-resource userToSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource userToSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   name: guid(searchService.id, principalId, 'Search Index Data Contributor', uniqueString(deployment().name))
   scope: searchService
   properties: {
@@ -152,7 +162,7 @@ resource userToSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@202
 }
 
 // // User permissions - Storage Blob Data Contributor
-// resource userToStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+// resource userToStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
 //   name: guid(storageAccount.id, principalId, 'Storage Blob Data Contributor', uniqueString(deployment().name))
 //   scope: storageAccount
 //   properties: {
@@ -163,7 +173,7 @@ resource userToSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@202
 // }
 
 // // Project needs Search access - Index Data Contributor
-// resource projectToSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+// resource projectToSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
 //   name: guid(searchService.id, aiProjectName, 'Search Index Data Contributor', uniqueString(deployment().name))
 //   scope: searchService
 //   properties: {

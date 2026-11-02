@@ -48,7 +48,7 @@ var appTags = union(tags, {
   'azd-service-name': serviceName
 })
 
-resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource containerApp 'Microsoft.App/containerApps@2026-07-01' = {
   name: name
   location: location
   tags: appTags

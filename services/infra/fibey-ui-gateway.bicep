@@ -37,23 +37,27 @@ var foundryAgentConsumerRoleDefinitionId = subscriptionResourceId(
   'eed3b665-ab3a-47b6-8f48-c9382fb1dad6'
 )
 
-resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+// The provider advertises these API versions before they are present in Bicep's type catalog.
+#disable-next-line BCP081
+resource registry 'Microsoft.ContainerRegistry/registries@2026-10-15-preview' existing = {
   name: registryName
 }
 
-resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
+resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2026-07-01' existing = {
   name: containerAppsEnvironmentName
 }
 
-resource registryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
+resource registryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview' existing = {
   name: registryIdentityName
 }
 
-resource foundryAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
+#disable-next-line BCP081
+resource foundryAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' existing = {
   name: foundryAccountName
 }
 
-resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2026-09-01' existing = {
+#disable-next-line BCP081
+resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2026-11-15-preview' existing = {
   parent: foundryAccount
   name: foundryProjectName
 }
@@ -92,7 +96,8 @@ module gateway 'modules/container-app.bicep' = {
   }
 }
 
-resource foundryAgentConsumerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource foundryAgentConsumerAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   name: guid(
     resourceId('Microsoft.App/containerApps', '${environmentName}-gateway'),
     foundryProject.id,

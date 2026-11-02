@@ -11,7 +11,7 @@ param tags object = {}
 @allowed(['basic', 'standard', 'standard2', 'standard3'])
 param sku string = 'basic'
 
-resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
+resource searchService 'Microsoft.Search/searchServices@2026-09-01-preview' = {
   name: name
   location: location
   tags: tags
@@ -22,7 +22,7 @@ resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
     type: 'SystemAssigned'
   }
   properties: {
-    hostingMode: 'default'
+    hostingMode: 'Default'
     partitionCount: 1
     replicaCount: 1
     publicNetworkAccess: 'enabled'
