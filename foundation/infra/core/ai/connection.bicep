@@ -72,21 +72,16 @@ param credentials object = {}
 
 
 // Get reference to the AI Services account and project
-// The provider advertises these API versions before they are present in Bicep's type catalog.
-#disable-next-line BCP081
-resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' existing = {
-
+resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = {
   name: aiServicesAccountName
 
-  #disable-next-line BCP081
   resource project 'projects' existing = {
     name: aiProjectName
   }
 }
 
 // Create the connection
-#disable-next-line BCP081
-resource connection 'Microsoft.CognitiveServices/accounts/projects/connections@2026-11-15-preview' = {
+resource connection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
   parent: aiAccount::project
   name: connectionConfig.name
   properties: {

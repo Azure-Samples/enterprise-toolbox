@@ -14,7 +14,7 @@ param logAnalyticsWorkspaceSharedKey string
 @description('Tags applied to the Container Apps environment.')
 param tags object = {}
 
-resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2026-07-01' = {
+resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: name
   location: location
   tags: tags

@@ -56,20 +56,17 @@ module containerAppsEnvironment 'modules/container-apps-environment.bicep' = {
   }
 }
 
-resource registryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview' = {
+resource registryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${environmentName}-services-acr-pull'
   location: location
   tags: tags
 }
 
-// The provider advertises these API versions before they are present in Bicep's type catalog.
-#disable-next-line BCP081
-resource existingRegistry 'Microsoft.ContainerRegistry/registries@2026-10-15-preview' existing = {
+resource existingRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: registryName
 }
 
-#disable-next-line BCP081
-resource registryPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
+resource registryPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(existingRegistry.id, registryIdentity.id, acrPullRoleDefinitionId)
   scope: existingRegistry
   properties: {

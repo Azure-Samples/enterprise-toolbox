@@ -13,14 +13,11 @@ var roleIds = [
   '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd' // Cognitive Services OpenAI User
 ]
 
-// The provider advertises these API versions before they are present in Bicep's type catalog.
-#disable-next-line BCP081
-resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' existing = {
+resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
   name: aiAccountName
 }
 
-#disable-next-line BCP081
-resource roleAssignments 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = [
+resource roleAssignments 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
   for roleId in roleIds: {
     name: guid(aiAccount.id, principalId, roleId)
     scope: aiAccount

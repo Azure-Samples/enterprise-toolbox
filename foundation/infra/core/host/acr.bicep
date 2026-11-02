@@ -25,12 +25,9 @@ param aiProjectName string = ''
 param connectionName string
 
 // Get reference to the AI Services account and project to access their managed identities
-// The provider advertises this API version before it is present in Bicep's type catalog.
-#disable-next-line BCP081
-resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   name: aiServicesAccountName
 
-  #disable-next-line BCP081
   resource aiProject 'projects' existing = {
     name: aiProjectName
   }
@@ -54,7 +51,7 @@ module containerRegistry 'br/public:avm/res/container-registry/registry:0.1.1' =
       // TODO SEPARATELY
       {
         // the foundry project itself can pull from the ACR
-        principalId: aiAccount::aiProject!.identity.principalId
+        principalId: aiAccount::aiProject.identity.principalId
         principalType: 'ServicePrincipal'
         roleDefinitionIdOrName: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
       }
@@ -79,7 +76,7 @@ module acrConnection '../ai/connection.bicep' = if (!empty(aiServicesAccountName
       }
     }
     credentials: {
-      clientId: aiAccount::aiProject!.identity.principalId
+      clientId: aiAccount::aiProject.identity.principalId
       resourceId: containerRegistry.outputs.resourceId
     }
   }
@@ -88,4 +85,4 @@ module acrConnection '../ai/connection.bicep' = if (!empty(aiServicesAccountName
 output containerRegistryName string = containerRegistry.outputs.name
 output containerRegistryLoginServer string = containerRegistry.outputs.loginServer
 output containerRegistryResourceId string = containerRegistry.outputs.resourceId
-output containerRegistryConnectionName string = !empty(aiServicesAccountName) && !empty(aiProjectName) ? acrConnection!.outputs.connectionName : ''
+output containerRegistryConnectionName string = acrConnection.outputs.connectionName

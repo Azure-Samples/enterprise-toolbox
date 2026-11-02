@@ -25,9 +25,7 @@ param aiProjectName string = ''
 param connectionName string
 
 // Storage Account for the AI Services account
-// The provider advertises these API versions before they are present in Bicep's type catalog.
-#disable-next-line BCP081
-resource storageAccount 'Microsoft.Storage/storageAccounts@2026-09-01' = {
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: resourceName
   location: location
   tags: tags
@@ -58,31 +56,27 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2026-09-01' = {
 }
 
 // Get reference to the AI Services account and project to access their managed identities
-#disable-next-line BCP081
-resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   name: aiServicesAccountName
 
-  #disable-next-line BCP081
   resource aiProject 'projects' existing = {
     name: aiProjectName
   }
 }
 
 // Role assignment for AI Services to access the storage account
-#disable-next-line BCP081
-resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   name: guid(storageAccount.id, aiAccount.id, 'ai-storage-contributor')
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
-    principalId: aiAccount::aiProject!.identity.principalId
+    principalId: aiAccount::aiProject.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // User permissions - Storage Blob Data Contributor
-#disable-next-line BCP081
-resource userStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
+resource userStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storageAccount.id, principalId, 'Storage Blob Data Contributor')
   scope: storageAccount
   properties: {
@@ -116,4 +110,4 @@ module storageConnection '../ai/connection.bicep' = if (!empty(aiServicesAccount
 output storageAccountName string = storageAccount.name
 output storageAccountId string = storageAccount.id
 output storageAccountPrincipalId string = storageAccount.identity.principalId
-output storageConnectionName string = !empty(aiServicesAccountName) && !empty(aiProjectName) ? storageConnection!.outputs.connectionName : ''
+output storageConnectionName string = storageConnection.outputs.connectionName

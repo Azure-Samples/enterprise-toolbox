@@ -7,9 +7,7 @@ param location string
 @description('Tags applied to the Azure Container Registry.')
 param tags object = {}
 
-// The provider advertises this API version before it is present in Bicep's type catalog.
-#disable-next-line BCP081
-resource containerRegistry 'Microsoft.ContainerRegistry/registries@2026-10-15-preview' = {
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: name
   location: location
   tags: tags

@@ -16,20 +16,16 @@ param aiProjectName string = ''
 param connectionName string
 
 // Get reference to the AI Services account and project to access their managed identities
-// The provider advertises these API versions before they are present in Bicep's type catalog.
-#disable-next-line BCP081
-resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   name: aiServicesAccountName
 
-  #disable-next-line BCP081
   resource aiProject 'projects' existing = {
     name: aiProjectName
   }
 }
 
 // Bing Search resource for grounding capability
-#disable-next-line BCP081
-resource bingSearch 'Microsoft.Bing/accounts@2025-05-01-preview' = {
+resource bingSearch 'Microsoft.Bing/accounts@2020-06-10' = {
   name: resourceName
   location: 'global'
   tags: tags
@@ -43,12 +39,11 @@ resource bingSearch 'Microsoft.Bing/accounts@2025-05-01-preview' = {
 }
 
 // Role assignment to allow AI project to use Bing Search
-#disable-next-line BCP081
-resource bingSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
+resource bingSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(aiServicesAccountName) && !empty(aiProjectName)) {
   scope: bingSearch
   name: guid(subscription().id, resourceGroup().id, 'bing-search-role', aiServicesAccountName, aiProjectName)
   properties: {
-    principalId: aiAccount::aiProject!.identity.principalId
+    principalId: aiAccount::aiProject.identity.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908') // Cognitive Services User
   }
@@ -83,6 +78,6 @@ module bingSearchConnection '../ai/connection.bicep' = if (!empty(aiServicesAcco
 }
 
 output bingGroundingName string = bingSearch.name
-output bingGroundingConnectionName string = !empty(aiServicesAccountName) && !empty(aiProjectName) ? bingSearchConnection!.outputs.connectionName : ''
+output bingGroundingConnectionName string = bingSearchConnection.outputs.connectionName
 output bingGroundingResourceId string = bingSearch.id
-output bingGroundingConnectionId string = !empty(aiServicesAccountName) && !empty(aiProjectName) ? bingSearchConnection!.outputs.connectionId : ''
+output bingGroundingConnectionId string = bingSearchConnection.outputs.connectionId
