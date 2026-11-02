@@ -7,7 +7,9 @@ param location string
 @description('Tags applied to the storage account.')
 param tags object = {}
 
-resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+// The provider advertises these API versions before they are present in Bicep's type catalog.
+#disable-next-line BCP081
+resource storageAccount 'Microsoft.Storage/storageAccounts@2026-09-01' = {
   name: name
   location: location
   tags: tags
@@ -24,12 +26,13 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
-resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+#disable-next-line BCP081
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2026-09-01' = {
   name: 'default'
   parent: storageAccount
 }
 
-resource foundryIqDocsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+resource foundryIqDocsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2026-06-01' = {
   name: 'foundry-iq-docs'
   parent: blobService
   properties: {

@@ -43,7 +43,7 @@ param aiProjectConnections array = []
 
 @secure()
 @description('JSON map of connection name to credentials object.')
-param aiProjectConnectionCredentialsJson string = '{}'
+param aiProjectConnectionCredentialsJson string = ''
 
 @description('Dependent resources requested by the azd AI agent extension.')
 param aiProjectDependentResources array = []
@@ -91,7 +91,7 @@ var resolvedResourceGroupName = empty(resourceGroupName) ? 'rg-${environmentName
 var resolvedAiDeploymentsLocation = empty(aiDeploymentsLocation) ? location : aiDeploymentsLocation
 var resolvedSearchServiceLocation = empty(searchServiceLocation) ? location : searchServiceLocation
 
-resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
+resource rg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: resolvedResourceGroupName
   location: location
   tags: tags
