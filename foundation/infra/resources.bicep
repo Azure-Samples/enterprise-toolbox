@@ -67,7 +67,7 @@ param toolboxName string
 @description('Name of the AI Search knowledge base.')
 param knowledgeBaseName string
 
-var aiProjectConnectionCreds = json(aiProjectConnectionCredentialsJson)
+var aiProjectConnectionCreds = json(empty(aiProjectConnectionCredentialsJson) ? '{}' : aiProjectConnectionCredentialsJson)
 
 // When the azd AI agent extension hasn't requested any model deployments
 // (e.g. plain `azd provision`), fall back to deploying the default model.
@@ -191,14 +191,17 @@ var toolboxMcpUrl = '${foundryProjectEndpoint}/toolboxes/${toolboxName}/mcp'
 // ─── RBAC ───
 
 // AI Search managed identity reads FoundryIQ documents from blob storage
-resource storageAccountRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+// The provider advertises these API versions before they are present in Bicep's type catalog.
+#disable-next-line BCP081
+resource storageAccountRef 'Microsoft.Storage/storageAccounts@2026-09-01' existing = {
   name: storageAccountName
   dependsOn: [
     storageAccount
   ]
 }
 
-resource searchBlobReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource searchBlobReaderRole 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   name: guid(storageAccountRef.id, searchServiceName, 'Storage Blob Data Reader')
   scope: storageAccountRef
   properties: {
@@ -210,7 +213,8 @@ resource searchBlobReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-0
 
 // Deploying user uploads FoundryIQ documents in the postprovision hook
 // (key-based auth is disabled on the storage account)
-resource deployerBlobContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+#disable-next-line BCP081
+resource deployerBlobContributorRole 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = if (!empty(principalId)) {
   name: guid(storageAccountRef.id, principalId, roleStorageBlobDataContributor)
   scope: storageAccountRef
   properties: {
@@ -221,14 +225,15 @@ resource deployerBlobContributorRole 'Microsoft.Authorization/roleAssignments@20
 }
 
 // Foundry project + account identities query the knowledge base on AI Search
-resource searchServiceRef 'Microsoft.Search/searchServices@2024-06-01-preview' existing = {
+resource searchServiceRef 'Microsoft.Search/searchServices@2026-09-01-preview' existing = {
   name: searchServiceName
   dependsOn: [
     aiSearch
   ]
 }
 
-resource projectSearchReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource projectSearchReaderRole 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   name: guid(searchServiceRef.id, aiFoundryProjectName, roleSearchIndexDataReader)
   scope: searchServiceRef
   properties: {
@@ -238,7 +243,8 @@ resource projectSearchReaderRole 'Microsoft.Authorization/roleAssignments@2022-0
   }
 }
 
-resource accountSearchReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource accountSearchReaderRole 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   name: guid(searchServiceRef.id, 'ai-account', roleSearchIndexDataReader)
   scope: searchServiceRef
   properties: {

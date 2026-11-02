@@ -101,14 +101,16 @@ module applicationInsights '../monitor/applicationinsights.bicep' = if (shouldCr
     location: location
     tags: tags
     name: 'appi-${resourceToken}'
-    logAnalyticsWorkspaceId: logAnalytics.outputs.id
+    logAnalyticsWorkspaceId: logAnalytics!.outputs.id
     projectMIPrincipalId: aiAccount::project.identity.principalId
   }
 }
 
 // Always create a new AI Account for now (simplified approach)
 // TODO: Add support for existing accounts in a future version
-resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
+// The provider advertises these API versions before they are present in Bicep's type catalog.
+#disable-next-line BCP081
+resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-11-15-preview' = {
   name: !empty(existingAiAccountName) ? existingAiAccountName : 'ai-account-${resourceToken}'
   location: location
   tags: tags
@@ -132,6 +134,7 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
   }
 
   @batchSize(1)
+  #disable-next-line BCP081
   resource seqDeployments 'deployments' = [
     for dep in (deployments??[]): {
       name: dep.name
@@ -142,6 +145,7 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
     }
   ]
 
+  #disable-next-line BCP081
   resource project 'projects' = {
     name: aiFoundryProjectName
     location: location
@@ -157,6 +161,7 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
     ]
   }
 
+  // Later project capability-host APIs omit the hosted-agent settings used here.
   resource aiFoundryAccountCapabilityHost 'capabilityHosts@2025-10-01-preview' = if (enableHostedAgents && enableCapabilityHost) {
     name: 'agents'
     properties: {
@@ -176,20 +181,21 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
 var shouldCreateExistingAppInsightsConnection = enableMonitoring && hasExistingAppInsightsConnectionString && !hasExistingAppInsightsConnection && !empty(existingApplicationInsightsResourceId)
 var shouldCreateAppInsightsConnection = shouldCreateAppInsights || shouldCreateExistingAppInsightsConnection
 
-resource appInsightConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = if (shouldCreateAppInsightsConnection) {
+#disable-next-line BCP081
+resource appInsightConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2026-11-15-preview' = if (shouldCreateAppInsightsConnection) {
   parent: aiAccount::project
   name: 'appi-${resourceToken}'
   properties: {
     category: 'AppInsights'
-    target: shouldCreateAppInsights ? applicationInsights.outputs.id : existingApplicationInsightsResourceId
+    target: shouldCreateAppInsights ? applicationInsights!.outputs.id : existingApplicationInsightsResourceId
     authType: 'ApiKey'
     isSharedToAll: true
     credentials: {
-      key: shouldCreateAppInsights ? applicationInsights.outputs.connectionString : existingApplicationInsightsConnectionString
+      key: shouldCreateAppInsights ? applicationInsights!.outputs.connectionString : existingApplicationInsightsConnectionString
     }
     metadata: {
       ApiType: 'Azure'
-      ResourceId: shouldCreateAppInsights ? applicationInsights.outputs.id : existingApplicationInsightsResourceId
+      ResourceId: shouldCreateAppInsights ? applicationInsights!.outputs.id : existingApplicationInsightsResourceId
     }
   }
 }
@@ -207,7 +213,8 @@ module aiConnections './connection.bicep' = [for (connection, index) in connecti
 
 // Azure AI User for the developer, scoped to the Foundry Project.
 // Project scope is sufficient for creating/running agents and calling models via the project endpoint.
-resource localUserAzureAIUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource localUserAzureAIUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   scope: aiAccount::project
   name: guid(subscription().id, resourceGroup().id, principalId, '53ca6127-db72-4b80-b1b0-d745d6d5456d')
   properties: {
@@ -347,8 +354,8 @@ output aiServicesProjectName string = aiAccount::project.name
 output aiServicesPrincipalId string = aiAccount.identity.principalId
 output projectPrincipalId string = aiAccount::project.identity.principalId
 output projectName string = aiAccount::project.name
-output APPLICATIONINSIGHTS_CONNECTION_STRING string = shouldCreateAppInsights ? applicationInsights.outputs.connectionString : (hasExistingAppInsightsConnectionString ? existingApplicationInsightsConnectionString : '')
-output APPLICATIONINSIGHTS_RESOURCE_ID string = shouldCreateAppInsights ? applicationInsights.outputs.id : (hasExistingAppInsightsConnectionString ? existingApplicationInsightsResourceId : '')
+output APPLICATIONINSIGHTS_CONNECTION_STRING string = shouldCreateAppInsights ? applicationInsights!.outputs.connectionString : (hasExistingAppInsightsConnectionString ? existingApplicationInsightsConnectionString : '')
+output APPLICATIONINSIGHTS_RESOURCE_ID string = shouldCreateAppInsights ? applicationInsights!.outputs.id : (hasExistingAppInsightsConnectionString ? existingApplicationInsightsResourceId : '')
 
 // Connection outputs from the connections array
 output connectionIds array = [for (connection, index) in (connections ?? []): {

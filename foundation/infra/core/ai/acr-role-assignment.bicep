@@ -10,12 +10,15 @@ param principalId string
 param acrResourceId string
 
 // Reference the existing ACR in this resource group
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+// The provider advertises these API versions before they are present in Bicep's type catalog.
+#disable-next-line BCP081
+resource acr 'Microsoft.ContainerRegistry/registries@2026-10-15-preview' existing = {
   name: acrName
 }
 
 // Grant AcrPull role to the AI project's managed identity
-resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+#disable-next-line BCP081
+resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2026-08-01-preview' = {
   scope: acr
   name: guid(acrResourceId, principalId, '7f951dda-4ed3-4680-a7ca-43fe172d538d')
   properties: {
