@@ -17,6 +17,7 @@ FILES = tuple(
     )
 ) + (
     "foundation/azure.yaml",
+    "foundation/toolboxes/fibey-toolbox/azure.yaml",
     "agent/azure.yaml",
 )
 HTTP_METHODS = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
@@ -149,13 +150,13 @@ def main() -> int:
         if not isinstance(document, dict):
             print(f"ERR {relative_path}: expected a YAML mapping", file=sys.stderr)
             return 1
-        if relative_path == "foundation/azure.yaml":
+        if relative_path == "foundation/toolboxes/fibey-toolbox/azure.yaml":
             try:
                 _validate_toolbox_openapi(document)
             except ValueError as error:
                 print(f"ERR {relative_path}: {error}", file=sys.stderr)
                 return 1
-            print("OK  foundation/azure.yaml toolbox OpenAPI")
+            print(f"OK  {relative_path} toolbox OpenAPI")
         if relative_path == "agent/azure.yaml":
             try:
                 _validate_agent_build_context(document)

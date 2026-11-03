@@ -443,6 +443,7 @@ dist/
 
 # Local Azure Developer CLI state
 /foundation/.azure/
+/foundation/toolboxes/*/.azure/
 /agent/.azure/
 
 # Compiled foundation deployment artifacts

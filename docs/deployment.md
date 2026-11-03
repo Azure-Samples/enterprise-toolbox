@@ -2,12 +2,14 @@
 
 ## Deployment lifecycles
 
-Foundation and hosted-agent deployment are split into independent azd projects.
+Shared foundation infrastructure, each toolbox, and the hosted agent have
+independent azd projects. The foundation workflow deploys the shared
+infrastructure followed by Fibey's toolbox-only project.
 The UI and gateway have a third, isolated Container Apps deployment lifecycle.
 
 | Stage | Folder | Owns | Deploy with |
 |-------|--------|------|-------------|
-| 1. Foundation | [`foundation/`](../foundation) | Foundry account, project, model, ACR, App Insights, AI Search, Storage, knowledge-base connection, and the **Foundry Toolbox**; knowledge-base setup runs locally | [Build → Deploy workflow](../.github/workflows/deploy-foundation.yml); locally, `azd provision`, then `azd deploy fibey-toolbox` |
+| 1. Foundation | [`foundation/`](../foundation) | Foundry account, project, model, ACR, App Insights, AI Search, Storage, knowledge-base connection, and the **Foundry Toolbox**; knowledge-base setup runs locally | [Build → Deploy workflow](../.github/workflows/deploy-foundation.yml); locally, `azd provision` in `foundation/`, then `azd deploy fibey-toolbox` in `foundation/toolboxes/fibey-toolbox/` after environment initialization |
 | 2. Agent | [`agent/`](../agent) | The hosted `fibey-agent` only | `azd deploy fibey-agent` |
 | 3. UI and gateway | [`ui/`](../ui), [`src/fibey/gateway/`](../src/fibey/gateway) | React frontend and private FastAPI gateway in the existing Container Apps environment | [Operator-invoked script](../scripts/deploy-fibey-ui-gateway.sh) |
 
@@ -66,7 +68,7 @@ Every foundation dispatch runs two dependent jobs:
 
 The artifact contains the complete `foundation/infra/` tree (including all
 transitive Bicep modules, support JSON, and `main.parameters.json`), plus
-`foundation/azure.yaml`.
+`foundation/azure.yaml` and `foundation/toolboxes/fibey-toolbox/azure.yaml`.
 Because the upload paths are all under `foundation/`,
 Deploy downloads the artifact into that directory to restore the expected paths.
 Knowledge-base setup and documents are not included. There is no directory-staging
@@ -229,7 +231,8 @@ deployment to avoid creating a second registry.
 Both foundation jobs use GitHub Environment `fibey-foundation`; agent Deploy
 uses `fibey-agent`, while agent Build requires no authentication. Their azd
 environment names do not have to match. Foundation
-creates its ephemeral azd environment after ARM deployment, using the native
+creates its ephemeral toolbox azd environment in
+`foundation/toolboxes/fibey-toolbox/` after ARM deployment, using the native
 deployment outputs.
 For foundation, an empty `resourceGroupName` derives
 `rg-<environmentName>`; an empty `aiFoundryResourceName` lets Bicep generate the
@@ -253,7 +256,7 @@ Agent Deploy calls `Azure/login` and `Azure/setup-azd` directly and uses the
 focused [agent initializer](../.github/scripts/initialize-agent.sh)
 to validate its parameters and initialize its own azd settings. Both workflows
 use version-tagged official actions rather than generic composite wrappers.
-Generated state under `foundation/.azure/` and
+Generated state under `foundation/.azure/`, `foundation/toolboxes/*/.azure/`, and
 `agent/.azure/` is ignored, not versioned, so clean runners need no state
 cleanup step. Local azd state remains on your machine.
 
@@ -270,14 +273,15 @@ The toolbox deploy step also passes the Bicep `FOUNDRY_PROJECT_ENDPOINT` and
 `AZURE_AI_PROJECT_ENDPOINT` outputs directly as process environment variables,
 so endpoint resolution does not depend on azd environment discovery on a clean
 runner. Missing endpoint outputs fail the step before toolbox deployment.
-The [toolbox postdeploy hook](../foundation/azure.yaml) uses native azd commands
+The [toolbox postdeploy hook](../foundation/toolboxes/fibey-toolbox/azure.yaml) uses native azd commands
 to publish the numeric version from `TOOLBOX_FIBEY_TOOLBOX_MCP_ENDPOINT` and verify
 the default. It uses the endpoint written by this deployment, not the latest
 version from a list; no predeploy baseline or Python helper is needed. It no
 longer rejects a deployment solely because another new version exists.
 [KB setup](../foundation/scripts/setup-knowledge-base.sh) runs only when explicitly
 requested locally. Toolbox deployment is a direct
-`azd deploy fibey-toolbox --no-prompt` command; GitHub handles logs and exit codes.
+`azd deploy fibey-toolbox --no-prompt` command from
+`foundation/toolboxes/fibey-toolbox/`; GitHub handles logs and exit codes.
 The manually invoked services prerequisite remains
 [`scripts/deploy-prerequisites.sh`](../scripts/deploy-prerequisites.sh).
 
@@ -289,7 +293,7 @@ An ARM, output import, toolbox hook, or toolbox failure fails the step
 explicitly and prevents later steps.
 Toolbox deployment does not require a separate promoted-version confirmation
 in a wrapper; promotion remains handled by the configured toolbox lifecycle
-hook in `foundation/azure.yaml`.
+hook in `foundation/toolboxes/fibey-toolbox/azure.yaml`.
 
 Configure these secrets in the `fibey-foundation` GitHub Environment, or as
 repository secrets if shared:
@@ -352,8 +356,43 @@ azd env new fibey-ent --subscription <subscription-id> --location eastus2
 azd provision
 # From foundation/, explicitly configure the knowledge base before toolbox deployment.
 ../scripts/setup.sh --setup-knowledge-base
+```
+
+### Local toolbox environment
+
+The infrastructure-only [`foundation/azure.yaml`](../foundation/azure.yaml)
+does not deploy toolboxes. Each toolbox has its own azd project under
+`foundation/toolboxes/<toolbox-name>/`, targeting the existing Foundry project.
+The toolbox extension requires inline tool definitions in that project's
+`azure.yaml`; the parent manifest does not import them.
+
+After provisioning and knowledge-base setup, initialize Fibey's toolbox environment
+and import the foundation settings. Continuing from `foundation/` above:
+
+```bash
+cd toolboxes/fibey-toolbox
+azd extension install azure.ai.toolboxes --version 1.0.0-beta.12 --no-prompt
+azd env new fibey-ent --subscription <subscription-id> --location eastus2
+azd env set --file ../../.azure/fibey-ent/.env
 azd deploy fibey-toolbox
 ```
+
+Use the actual foundation environment name, subscription, and location in these
+commands. If the toolbox environment already exists, use
+`azd env select <environment-name>` instead of `azd env new`.
+Repeat the `azd env set --file` import after foundation outputs or knowledge-base
+connection settings change. This imports settings only; do not copy, move, or
+delete existing `.azure` directories. Existing foundation state remains valid for
+infrastructure provisioning and knowledge-base setup.
+
+The projects have independent local state, even when their environment names
+match. Toolbox deployment writes `TOOLBOX_FIBEY_TOOLBOX_MCP_ENDPOINT` to
+`foundation/toolboxes/fibey-toolbox/.azure/<environment-name>/.env`, not to
+the foundation environment. That output is versioned; the agent continues using
+the unversioned endpoint configured in its own parameters.
+Future sibling toolbox projects can import the same foundation settings and
+target the same Foundry project. The current workflow deploys only Fibey;
+there is no toolbox discovery or selection mechanism.
 
 Local provisioning still imports outputs, but knowledge-base setup is opt-in.
 The [agent initializer](../.github/scripts/initialize-agent.sh) uses `jq` to read
@@ -447,12 +486,13 @@ parameter file; local agent deployment still uses its own azd environment
 settings. Do not copy azd state between projects.
 
 The toolbox definition, including its OpenAPI schema, lives inline in
-[`foundation/azure.yaml`](../foundation/azure.yaml). Its inventory and
+[`foundation/toolboxes/fibey-toolbox/azure.yaml`](../foundation/toolboxes/fibey-toolbox/azure.yaml). Its inventory and
 work-orders endpoints are inputs, because those apps are no longer deployed by
 either flow. Each successful `azd deploy fibey-toolbox` creates a new immutable
 toolbox version and promotes that version to the default. The agent uses the
 unversioned toolbox endpoint, so this immediately changes its available tools
-without redeploying the agent. To inspect versions or roll back, run:
+without redeploying the agent. To inspect versions or roll back, run from
+`foundation/toolboxes/fibey-toolbox/`:
 
 ```bash
 azd ai toolbox versions list fibey-toolbox
@@ -495,7 +535,7 @@ The deployment creates all resources in a single resource group (`rg-<env-name>`
 | Status Dashboard | Container App | `services/status-dashboard/` | Network/service status page |
 | AI Foundry account + project | Microsoft Foundry | `foundation/infra/core/ai/` | Hosts the model deployment, hosted agent, and toolbox |
 | Model deployment | Foundry | `azure.yaml` | `gpt-4.1-mini` (configurable) |
-| Foundry Toolbox | Foundry (azd service) | `foundation/azure.yaml` | Single MCP endpoint dispatching to backend tools |
+| Foundry Toolbox | Foundry (azd service) | `foundation/toolboxes/fibey-toolbox/azure.yaml` | Single MCP endpoint dispatching to backend tools |
 | AI Search | Azure AI Search | `services/foundry-iq-docs/` | Knowledge base index + KB MCP endpoint |
 | Container Registry | ACR | — | Docker image storage (apps + hosted agent) |
 | Storage Account | Blob Storage | `services/foundry-iq-docs/` | Document storage |
@@ -527,7 +567,8 @@ knowledge-base ingestion can complete. Do not disable the policy to run the
 setup script. Anonymous blob access and shared-key authentication remain disabled.
 For a limited deployment without knowledge retrieval, remove the
 `knowledge_base` MCP tool from the `fibey-toolbox` service in
-`foundation/azure.yaml`, then run `azd deploy fibey-toolbox` from `foundation/`.
+`foundation/toolboxes/fibey-toolbox/azure.yaml`, then run
+`azd deploy fibey-toolbox` from `foundation/toolboxes/fibey-toolbox/`.
 Restore the tool and deploy again after knowledge-base ingestion is available.
 
 ## Quick Deployment (legacy)
@@ -559,7 +600,8 @@ setup is now an explicit local step, not a postprovision hook:
 3. **Deploy** — builds and pushes container images for all apps and deploys
    the hosted agent to the Foundry project.
 4. **Toolbox deployment (separate command)** — run `azd deploy fibey-toolbox`
-   from `foundation/` after the knowledge-base connection and backing service
+   from `foundation/toolboxes/fibey-toolbox/` after initializing its environment
+   and after the knowledge-base connection and backing service
    endpoints are available.
 
 **Important:** Do NOT include `?api-version=v1` in the `TOOLBOX_MCP_URL`. The agent code automatically appends this.
@@ -713,7 +755,7 @@ The knowledge base retrieval was validated with semantic `intents` requests agai
 - All Container Apps are configured with **minReplicas: 1** to avoid cold starts.
 - The FoundryIQ documents are uploaded to blob storage and indexed separately — they are not part of the container deployment.
 - The status dashboard can be set to internal-only ingress if browser automation is the only consumer.
-- Infrastructure definitions live in `foundation/infra/` (Bicep). Deploy the Foundry Toolbox separately with `azd deploy fibey-toolbox` from `foundation/`.
+- Infrastructure definitions live in `foundation/infra/` (Bicep). Deploy the Foundry Toolbox separately with `azd deploy fibey-toolbox` from `foundation/toolboxes/fibey-toolbox/` after [environment initialization](#local-toolbox-environment).
 
 ## RBAC (automated)
 
@@ -795,7 +837,8 @@ azd deploy fibey-agent
 
 The Toolbox lives in the same Foundry project and provides a single MCP
 endpoint that dispatches to the backend tools. Deploy it explicitly from
-`foundation/` with `azd deploy fibey-toolbox`:
+`foundation/toolboxes/fibey-toolbox/` with `azd deploy fibey-toolbox` after
+[environment initialization](#local-toolbox-environment):
 
 | Tool | Type | Backend |
 |------|------|---------|

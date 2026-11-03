@@ -74,8 +74,9 @@ Open the UI at <http://localhost:5173>.
 
 ## Deploy to Azure
 
-Cloud deployment has two independent azd projects. The GitHub Actions workflows
-keep those lifecycles separate:
+Cloud deployment separates shared foundation infrastructure, per-toolbox azd
+projects, and the hosted-agent azd project. The GitHub Actions workflows keep
+foundation/toolbox deployment separate from agent deployment:
 
 - [Foundation workflow](.github/workflows/deploy-foundation.yml): manually run
   **Build → Deploy**. Build runs an infrastructure what-if from Bicep source
@@ -127,6 +128,10 @@ Foundation uses official login, deployment, azd setup, and artifact actions
 directly. KB setup is explicitly opt-in locally, including after local azd
 provisioning. Toolbox promotion uses native azd commands in the postdeploy hook.
 Generated local azd state is ignored rather than checked in.
+Toolbox definitions live in per-toolbox azd projects under
+[`foundation/toolboxes/`](foundation/toolboxes/). Fibey's
+[`azure.yaml`](foundation/toolboxes/fibey-toolbox/azure.yaml) targets the same
+Foundry project as the shared foundation infrastructure.
 See [docs/deployment.md](docs/deployment.md) for the workflow
 operations, required configuration, permissions, and local azd commands.
 
@@ -149,8 +154,10 @@ services/
   status-dashboard/       # Static service-status dashboard (port 8003)
   foundry-iq-docs/        # Markdown source for the FoundryIQ knowledge base
 ui/                       # React + TypeScript + Tailwind frontend
-foundation/               # Foundry infra (Bicep), toolbox definition, KB setup (azd project 1)
-agent/                    # Hosted agent deployment (azd project 2)
+foundation/               # Shared Foundry infra (Bicep) and KB setup
+  toolboxes/
+    fibey-toolbox/        # Toolbox-only azd project and inline definition
+agent/                    # Hosted agent deployment (separate azd project)
 scripts/                  # setup.sh, start-dev.sh
 docs/                     # Architecture, deployment, local-dev, integration docs
 ```
