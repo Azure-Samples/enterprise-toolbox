@@ -27,6 +27,25 @@ def find_action(steps: list[dict], name: str) -> dict:
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_toolbox_project_is_separate_from_shared_infrastructure(self) -> None:
+        foundation = yaml.safe_load(
+            (ROOT / "foundation/azure.yaml").read_text(encoding="utf-8")
+        )
+        toolbox_directory = ROOT / "foundation/toolboxes/fibey-toolbox"
+        toolbox = yaml.safe_load(
+            (toolbox_directory / "azure.yaml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(foundation["name"], "fibey-foundation")
+        self.assertEqual(
+            foundation["infra"], {"provider": "bicep", "path": "infra", "module": "main"}
+        )
+        self.assertNotIn("services", foundation)
+        self.assertEqual(toolbox["name"], "fibey-toolbox")
+        self.assertNotIn("infra", toolbox)
+        self.assertFalse((toolbox_directory / "infra").exists())
+        self.assertEqual(set(toolbox["services"]), {"fibey-toolbox"})
+        self.assertEqual(toolbox["services"]["fibey-toolbox"]["host"], "azure.ai.toolbox")
+
     def test_foundation_build_deploy_and_output_handoff(self) -> None:
         workflow = load_workflow("deploy-foundation.yml")
         self.assertEqual(set(workflow["jobs"]), {"build", "deploy"})
@@ -57,7 +76,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(upload["with"]["name"], download["with"]["name"])
         self.assertEqual(
             set(upload["with"]["path"].splitlines()),
-            {"foundation/infra/**", "foundation/azure.yaml"},
+            {
+                "foundation/infra/**", "foundation/azure.yaml",
+                "foundation/toolboxes/fibey-toolbox/azure.yaml",
+            },
         )
         self.assertEqual(download["with"]["path"], "${{ github.workspace }}/foundation")
         self.assertEqual(build["outputs"]["location"], "${{ steps.location.outputs.location }}")
@@ -82,6 +104,9 @@ class WorkflowTests(unittest.TestCase):
         )
         self.assertLess(infrastructure, handoff)
         self.assertLess(handoff, toolbox)
+        self.assertEqual(
+            steps[toolbox]["working-directory"], "foundation/toolboxes/fibey-toolbox"
+        )
         self.assertEqual(
             steps[infrastructure]["with"]["masked-outputs"], "APPLICATIONINSIGHTS_CONNECTION_STRING"
         )
@@ -111,6 +136,9 @@ class WorkflowTests(unittest.TestCase):
                 ignore=shutil.ignore_patterns("main.json"),
             )
             shutil.copy2(ROOT / "foundation/azure.yaml", build / "foundation/azure.yaml")
+            toolbox_path = Path("foundation/toolboxes/fibey-toolbox/azure.yaml")
+            (build / toolbox_path).parent.mkdir(parents=True)
+            shutil.copy2(ROOT / toolbox_path, build / toolbox_path)
             prefixes = [build / path.split("*", 1)[0].rstrip("/") for path in paths]
             upload_root = Path(os.path.commonpath(prefixes))
             self.assertEqual(upload_root, build / "foundation")
@@ -129,6 +157,7 @@ class WorkflowTests(unittest.TestCase):
                 "infra/core/ai/ai-project.bicep",
                 "infra/abbreviations.json",
                 "azure.yaml",
+                "toolboxes/fibey-toolbox/azure.yaml",
             ):
                 self.assertTrue((deploy / path).is_file(), path)
                 self.assertEqual(
@@ -253,6 +282,7 @@ class WorkflowTests(unittest.TestCase):
             "scripts/setup.sh": {"workflows", "configuration"},
             "scripts/deploy-prerequisites.sh": {"workflows", "configuration"},
             "foundation/infra/main.bicep": {"foundation", "configuration"},
+            "foundation/toolboxes/fibey-toolbox/azure.yaml": {"foundation", "configuration"},
             "services/foundry-iq-docs/docs/safety.md": {"foundation", "configuration"},
             "services/infra/main.bicep": {"foundation", "configuration"},
             "src/fibey/agent/hosted.py": {"agent", "configuration"},

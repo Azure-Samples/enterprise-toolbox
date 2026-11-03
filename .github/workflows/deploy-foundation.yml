@@ -61,6 +61,7 @@ jobs:
           path: |
             foundation/infra/**
             foundation/azure.yaml
+            foundation/toolboxes/fibey-toolbox/azure.yaml
           if-no-files-found: error
 
   deploy:
@@ -112,7 +113,7 @@ jobs:
           azd extension install azure.ai.toolboxes --version "$TOOLBOX_EXTENSION_VERSION" --no-prompt
           azd config set auth.useAzCliAuth true
           azd env new "$ENVIRONMENT_NAME" --no-prompt \
-            --subscription "$AZURE_SUBSCRIPTION_ID" --location "$DEPLOYMENT_LOCATION" --cwd foundation > /dev/null
+            --subscription "$AZURE_SUBSCRIPTION_ID" --location "$DEPLOYMENT_LOCATION" --cwd foundation/toolboxes/fibey-toolbox > /dev/null
           # Serialized action output casing differs from case-sensitive azd variable names.
           settings_text="$(jq -er '
             to_entries[]
@@ -120,9 +121,9 @@ jobs:
           ' <<< "$ARM_OUTPUTS")"
           settings=()
           while IFS= read -r setting; do settings+=("$setting"); done <<< "$settings_text"
-          azd env set "${settings[@]}" --environment "$ENVIRONMENT_NAME" --cwd foundation > /dev/null
+          azd env set "${settings[@]}" --environment "$ENVIRONMENT_NAME" --cwd foundation/toolboxes/fibey-toolbox > /dev/null
       - name: Deploy and promote the toolbox
-        working-directory: foundation
+        working-directory: foundation/toolboxes/fibey-toolbox
         env:
           AZURE_ENV_NAME: ${{ steps.infrastructure.outputs.AZURE_ENV_NAME }}
           FOUNDRY_PROJECT_ENDPOINT: ${{ steps.infrastructure.outputs.FOUNDRY_PROJECT_ENDPOINT }}

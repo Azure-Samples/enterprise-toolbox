@@ -15,6 +15,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+TOOLBOX_PROJECT = "foundation/toolboxes/fibey-toolbox"
 ENDPOINT = (
     "https://example.services.ai.azure.com/api/projects/test/"
     "toolboxes/fibey-toolbox/versions/2/mcp?api-version=v1"
@@ -148,7 +149,7 @@ class ScriptTests(unittest.TestCase):
 
     def _toolbox_hook(self) -> str:
         self._mock_azd(TOOLBOX_MOCK)
-        manifest = yaml.safe_load((ROOT / "foundation/azure.yaml").read_text(encoding="utf-8"))
+        manifest = yaml.safe_load((ROOT / TOOLBOX_PROJECT / "azure.yaml").read_text(encoding="utf-8"))
         return manifest["services"]["fibey-toolbox"]["hooks"]["postdeploy"][0]["run"]
 
     def test_foundation_outputs_are_imported_without_exposing_values(self) -> None:
@@ -161,7 +162,7 @@ class ScriptTests(unittest.TestCase):
             if "ARM_OUTPUTS" in step.get("env", {})
         )
         self._mock_azd(ENVIRONMENT_MOCK)
-        (self.root / "foundation").mkdir()
+        (self.root / TOOLBOX_PROJECT).mkdir(parents=True)
         outputs = {
             "AZURE_ENV_NAME": "fibey-test",
             "AZURE_LOCATION": "eastus2",
@@ -220,7 +221,10 @@ class ScriptTests(unittest.TestCase):
                     )
                     settings = dict(item.split("=", 1) for item in calls[-1][2:-4])
                     self.assertEqual(settings, outputs)
-                    manifest = (ROOT / "foundation/azure.yaml").read_text(encoding="utf-8")
+                    for call in calls:
+                        if call[:2] in (["env", "new"], ["env", "set"]):
+                            self.assertEqual(call[-2:], ["--cwd", TOOLBOX_PROJECT])
+                    manifest = (ROOT / TOOLBOX_PROJECT / "azure.yaml").read_text(encoding="utf-8")
                     rendered = re.sub(
                         r"\$\{([A-Z_]+)\}", lambda match: settings[match[1]], manifest,
                     )
